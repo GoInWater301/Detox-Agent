@@ -1,0 +1,12 @@
+{
+  "name": "doh-beast-forwarder",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "boost-beast",
+    "boost-redis",
+    "openssl",
+    "grpc",
+    "protobuf",
+    "spdlog"
+  ]
+}

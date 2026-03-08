@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package analytics;
+
+service AnalyticsService {
+  // Client-side streaming: caller pushes events, server replies with a summary.
+  rpc StreamQueries(stream DnsQueryEvent) returns (Ack);
+}
+
+message DnsQueryEvent {
+  string user_id        = 1;  // extracted from URL path /{user_id}/dns-query
+  bytes  raw_query      = 2;  // original DNS wire-format question
+  bytes  raw_response   = 3;  // upstream DNS answer
+  string client_ip      = 4;  // peer address (IPv4 or IPv6)
+  int64  timestamp_us   = 5;  // microseconds since Unix epoch
+  uint32 latency_us     = 6;  // end-to-end resolve latency
+  bool   used_tcp       = 7;  // false = UDP, true = TCP fallback
+  string queried_domain = 8;  // human-readable domain extracted from DNS QNAME
+                               // e.g. "example.com", "api.service.internal"
+}
+
+message Ack {
+  int64 accepted_count = 1;
+}

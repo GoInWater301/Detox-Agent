@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package usage;
+
+message DomainUsage {
+    string domain = 1;
+    int64 duration_seconds = 2; // Duration in seconds
+    string last_accessed = 3;
+}
+
+message UsageRequest {
+    string period = 1; // "daily", "weekly", or "monthly"
+}
+
+message UsageResponse {
+    repeated DomainUsage usage_list = 1;
+}
+
+service UsageService {
+    rpc GetUsage(UsageRequest) returns (UsageResponse);
+}
