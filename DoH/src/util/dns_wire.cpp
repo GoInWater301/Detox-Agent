@@ -34,12 +34,35 @@ bool is_dns_truncated(std::span<const uint8_t> msg) noexcept {
 
 namespace {
 
+// Skip one DNS name at `pos` in `msg` (handles compression pointers).
+// Returns the position *after* the name, or 0 on error.
+std::size_t skip_name(std::span<const uint8_t> msg, std::size_t pos) noexcept {
+    while (pos < msg.size()) {
+        const uint8_t c = msg[pos];
+        if (c == 0) return pos + 1;          // root label
+        if ((c & 0xC0u) == 0xC0u) {          // compression pointer (2 bytes)
+            if (pos + 1 >= msg.size()) return 0;
+            return pos + 2;
+        }
+        pos += 1 + c;                         // regular label: skip length + data
+    }
+    return 0;  // ran off end — malformed
+}
+
 std::vector<uint8_t> dns_make_block_response(std::span<const uint8_t> query,
                                              uint8_t rcode) noexcept {
     if (query.size() < 12) return {};
 
+    const uint16_t qdcount = (uint16_t(query[4]) << 8) | query[5];
+    std::size_t question_end = 12;
+    for (uint16_t i = 0; i < qdcount; ++i) {
+        question_end = skip_name(query, question_end);
+        if (question_end == 0 || question_end + 4 > query.size()) return {};
+        question_end += 4;  // QTYPE + QCLASS
+    }
+
     std::vector<uint8_t> resp;
-    resp.reserve(query.size());
+    resp.reserve(question_end);
 
     // Transaction ID
     resp.push_back(query[0]);
@@ -51,8 +74,8 @@ std::vector<uint8_t> dns_make_block_response(std::span<const uint8_t> query,
     resp.push_back(static_cast<uint8_t>(rcode & 0x0Fu));
 
     // QDCOUNT (mirror)
-    resp.push_back(query[4]);
-    resp.push_back(query[5]);
+    resp.push_back(static_cast<uint8_t>((qdcount >> 8) & 0xFFu));
+    resp.push_back(static_cast<uint8_t>(qdcount & 0xFFu));
     // ANCOUNT = 0
     resp.push_back(0x00); resp.push_back(0x00);
     // NSCOUNT = 0
@@ -60,8 +83,10 @@ std::vector<uint8_t> dns_make_block_response(std::span<const uint8_t> query,
     // ARCOUNT = 0
     resp.push_back(0x00); resp.push_back(0x00);
 
-    // Question section (QNAME + QTYPE + QCLASS)
-    resp.insert(resp.end(), query.begin() + 12, query.end());
+    // Question section only (QNAME + QTYPE + QCLASS). Do not copy EDNS or
+    // other additional records from the query because the synthesized response
+    // clears ANCOUNT/NSCOUNT/ARCOUNT.
+    resp.insert(resp.end(), query.begin() + 12, query.begin() + question_end);
 
     return resp;
 }
@@ -130,25 +155,6 @@ std::string dns_query_domain(std::span<const uint8_t> msg) noexcept {
 //   RDLENGTH(2 bytes)
 //   RDATA   (RDLENGTH bytes)
 // ─────────────────────────────────────────────────────────────────────────────
-
-namespace {
-
-// Skip one DNS name at `pos` in `msg` (handles compression pointers).
-// Returns the position *after* the name, or 0 on error.
-std::size_t skip_name(std::span<const uint8_t> msg, std::size_t pos) noexcept {
-    while (pos < msg.size()) {
-        const uint8_t c = msg[pos];
-        if (c == 0) return pos + 1;          // root label
-        if ((c & 0xC0u) == 0xC0u) {          // compression pointer (2 bytes)
-            if (pos + 1 >= msg.size()) return 0;
-            return pos + 2;
-        }
-        pos += 1 + c;                         // regular label: skip length + data
-    }
-    return 0;  // ran off end — malformed
-}
-
-} // namespace
 
 uint32_t dns_clamp_response_ttl(std::vector<uint8_t>& msg,
                                  uint32_t min_ttl_s,

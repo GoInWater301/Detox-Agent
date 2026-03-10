@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+enable_testing()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # External dependencies (resolved by vcpkg toolchain)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -130,3 +132,16 @@ target_link_libraries(doh-forwarder PRIVATE
 target_compile_options(doh-forwarder PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(dns_wire_test
+    tests/dns_wire_test.cpp
+)
+target_include_directories(dns_wire_test PRIVATE include)
+target_link_libraries(dns_wire_test PRIVATE doh_util)
+target_compile_options(dns_wire_test PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
+)
+add_test(NAME dns_wire_test COMMAND dns_wire_test)

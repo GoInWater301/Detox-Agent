@@ -173,12 +173,15 @@ sys.stdout.buffer.write(b)
 
 ## 로그 레벨
 
-`spdlog` 기반. 현재 환경변수로 레벨 제어는 지원하지 않습니다.
-소스에서 `spdlog::set_level()` 호출 (`src/main.cpp`) 을 변경하세요.
+`spdlog` 기반. `DOH_LOG_LEVEL` 환경변수로 제어합니다.
+
+```bash
+DOH_LOG_LEVEL=debug ./build/doh-forwarder
+```
 
 | 레벨 | 사용 위치 |
 |------|-----------|
-| `info` | 서버 시작, TLS 로드, Listener 바인딩 |
+| `info` | 서버 시작, TLS 로드, Listener 바인딩, 요청/응답 액세스 로그 |
 | `warn` | 분석 큐 overflow, gRPC 재연결 |
 | `error` | Accept 오류, gRPC Write 실패 |
 | `debug` | TLS 핸드셰이크 실패, read/write 오류 (고빈도) |

@@ -97,15 +97,21 @@ void HttpsSession::handle_doh_request() {
     // ── 1. Validate and extract user_id (zero-copy string_view) ──────────────
     const auto user_id_opt = util::parse_user_id(req_.target());
     if (!user_id_opt) {
+        spdlog::warn("Rejected request [{}] target={} reason=invalid_path",
+                     client_ip_, req_.target());
         do_send(make_error_response(http::status::forbidden,
                                     "Path must be /{user_id}/dns-query"));
         return;
     }
     std::string user_id{*user_id_opt};
+    spdlog::info("DoH request [{}] method={} user={} target={}",
+                 client_ip_, req_.method_string(), user_id, req_.target());
 
     // ── 2. Extract DNS wire payload ───────────────────────────────────────────
     auto payload_opt = extract_dns_payload();
     if (!payload_opt || payload_opt->empty()) {
+        spdlog::warn("Rejected request [{}/{}] reason=invalid_payload",
+                     client_ip_, user_id);
         do_send(make_error_response(http::status::bad_request,
                                     "Missing or invalid DNS payload"));
         return;
@@ -114,7 +120,12 @@ void HttpsSession::handle_doh_request() {
 
     // ── 3. Extract queried domain from DNS QNAME (zero-alloc) ────────────────
     std::string queried_domain = util::dns_query_domain(payload);
-    spdlog::debug("DoH query [{}/{}] → {}", client_ip_, user_id, queried_domain);
+    if (queried_domain.empty()) {
+        spdlog::warn("Failed to parse DNS question [{}/{}]; bypassing filter",
+                     client_ip_, user_id);
+    } else {
+        spdlog::debug("DoH query [{}/{}] → {}", client_ip_, user_id, queried_domain);
+    }
 
     // ── 4. Timing metadata ────────────────────────────────────────────────────
     const auto t0    = std::chrono::steady_clock::now();
@@ -123,7 +134,10 @@ void HttpsSession::handle_doh_request() {
 
     // ── 5. Domain filter check (async; skipped if no filter configured) ───────
     if (filter_) {
-        filter_->async_check(user_id, queried_domain, stream_.get_executor(),
+        auto filter_user_id = user_id;
+        auto filter_domain = queried_domain;
+        filter_->async_check(std::move(filter_user_id), std::move(filter_domain),
+            stream_.get_executor(),
             [self = shared_from_this(),
              user_id        = std::move(user_id),
              queried_domain = std::move(queried_domain),
@@ -207,6 +221,11 @@ void HttpsSession::do_forward(std::string  user_id,
                 dns_response,
                 self->cfg_.dns_min_ttl_s,
                 self->cfg_.dns_max_ttl_s);
+
+            spdlog::info("DoH response [{}/{}] domain={} bytes={} latency_us={} upstream={}",
+                         self->client_ip_, user_id, queried_domain,
+                         dns_response.size(), latency_us,
+                         used_tcp ? "tcp" : "udp");
 
             // Fire-and-forget analytics (non-blocking)
             if (self->analytics_) {

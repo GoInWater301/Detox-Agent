@@ -2,7 +2,11 @@ package com.pnu.detox_agent.webserver.service;
 
 import java.util.Locale;
 import java.util.Optional;
+import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
 
 final class DomainAggregationPolicy {
 
@@ -35,13 +39,14 @@ final class DomainAggregationPolicy {
             "crashlytics.com",
             "fastly.net");
 
-    private static final Set<String> YOUTUBE_DOMAINS = Set.of(
-            "youtube.com",
-            "youtu.be",
-            "ytimg.com",
-            "ggpht.com",
-            "youtube-nocookie.com",
-            "googlevideo.com");
+    private static final Set<String> SHARED_INFRASTRUCTURE_ROOTS = Set.of(
+            "cloudfront.net",
+            "fastly.net",
+            "akamaihd.net",
+            "edgekey.net",
+            "edgesuite.net");
+
+    private static final Map<String, ServiceDefinition> SERVICE_DEFINITIONS = serviceDefinitions();
 
     private DomainAggregationPolicy() {
     }
@@ -62,11 +67,10 @@ final class DomainAggregationPolicy {
         }
 
         String registrable = registrableDomain(normalized);
-        if (YOUTUBE_DOMAINS.contains(registrable) || normalized.endsWith(".youtubei.googleapis.com")) {
-            return Optional.of("youtube.com");
-        }
-        if (registrable.equals("googleapis.com") && normalized.startsWith("youtubei.")) {
-            return Optional.of("youtube.com");
+        Optional<String> serviceDomain = findServiceDefinition(normalized)
+                .map(ServiceDefinition::canonicalDomain);
+        if (serviceDomain.isPresent()) {
+            return serviceDomain;
         }
         return Optional.of(registrable);
     }
@@ -84,6 +88,113 @@ final class DomainAggregationPolicy {
             normalized = normalized.substring(4);
         }
         return normalized;
+    }
+
+    static String toBlockedServiceDomain(String rawDomain) {
+        String normalized = normalizeHost(rawDomain);
+        if (normalized.isBlank()) {
+            return normalized;
+        }
+
+        return findServiceDefinition(normalized)
+                .map(ServiceDefinition::canonicalDomain)
+                .orElseGet(() -> {
+                    String registrable = registrableDomain(normalized);
+                    if (SHARED_INFRASTRUCTURE_ROOTS.contains(registrable)) {
+                        return normalized;
+                    }
+                    return registrable;
+                });
+    }
+
+    static Set<String> toBlockTargets(String rawDomain) {
+        String normalized = toBlockedServiceDomain(rawDomain);
+        if (normalized.isBlank()) {
+            return Set.of();
+        }
+
+        ServiceDefinition definition = SERVICE_DEFINITIONS.get(normalized);
+        if (definition == null || definition.blockTargets().isEmpty()) {
+            return Set.of(normalized);
+        }
+
+        LinkedHashSet<String> targets = new LinkedHashSet<>();
+        targets.add(normalized);
+        targets.addAll(definition.blockTargets());
+        return Set.copyOf(targets);
+    }
+
+    private static Map<String, ServiceDefinition> serviceDefinitions() {
+        Map<String, ServiceDefinition> definitions = new LinkedHashMap<>();
+        definitions.put("youtube.com", service(
+                "youtube.com",
+                Set.of(
+                        "youtube.com",
+                        "youtu.be",
+                        "ytimg.com",
+                        "ggpht.com",
+                        "youtube-nocookie.com",
+                        "googlevideo.com",
+                        "youtubei.googleapis.com"),
+                Set.of(
+                        "youtube.com",
+                        "youtu.be",
+                        "ytimg.com",
+                        "ggpht.com",
+                        "youtube-nocookie.com",
+                        "googlevideo.com",
+                        "youtubei.googleapis.com")));
+        definitions.put("instagram.com", service(
+                "instagram.com",
+                Set.of("instagram.com", "cdninstagram.com"),
+                Set.of("instagram.com", "cdninstagram.com")));
+        definitions.put("facebook.com", service(
+                "facebook.com",
+                Set.of("facebook.com", "fbcdn.net", "fbsbx.com", "messenger.com", "m.me"),
+                Set.of("facebook.com", "fbcdn.net", "fbsbx.com", "messenger.com", "m.me")));
+        definitions.put("tiktok.com", service(
+                "tiktok.com",
+                Set.of("tiktok.com", "tiktokcdn.com", "tiktokv.com", "musical.ly", "byteoversea.com", "ibytedtos.com"),
+                Set.of("tiktok.com", "tiktokcdn.com", "tiktokv.com", "musical.ly", "byteoversea.com", "ibytedtos.com")));
+        definitions.put("netflix.com", service(
+                "netflix.com",
+                Set.of("netflix.com", "nflxvideo.net", "nflximg.net", "nflximg.com", "nflxso.net"),
+                Set.of("netflix.com", "nflxvideo.net", "nflximg.net", "nflximg.com", "nflxso.net")));
+        definitions.put("x.com", service(
+                "x.com",
+                Set.of("x.com", "twitter.com", "twimg.com"),
+                Set.of("x.com", "twitter.com", "twimg.com")));
+        definitions.put("twitch.tv", service(
+                "twitch.tv",
+                Set.of("twitch.tv", "jtvnw.net", "ttvnw.net", "twitchcdn.net"),
+                Set.of("twitch.tv", "jtvnw.net", "ttvnw.net", "twitchcdn.net")));
+        definitions.put("discord.com", service(
+                "discord.com",
+                Set.of("discord.com", "discord.gg", "discordapp.com", "discordapp.net"),
+                Set.of("discord.com", "discord.gg", "discordapp.com", "discordapp.net")));
+        return Map.copyOf(definitions);
+    }
+
+    private static ServiceDefinition service(String canonicalDomain, Set<String> matchDomains, Set<String> blockTargets) {
+        return new ServiceDefinition(canonicalDomain, Set.copyOf(matchDomains), Set.copyOf(blockTargets));
+    }
+
+    private static Optional<ServiceDefinition> findServiceDefinition(String normalized) {
+        return SERVICE_DEFINITIONS.values().stream()
+                .filter(definition -> matchesService(normalized, definition))
+                .sorted(Comparator.comparingInt((ServiceDefinition definition) -> definition.canonicalDomain().length()).reversed())
+                .findFirst();
+    }
+
+    private static boolean matchesService(String normalized, ServiceDefinition definition) {
+        if (matchesAnySuffix(normalized, definition.matchDomains())) {
+            return true;
+        }
+        return definition.canonicalDomain().equals("youtube.com")
+                && (normalized.endsWith(".youtubei.googleapis.com")
+                        || (registrableDomain(normalized).equals("googleapis.com") && normalized.startsWith("youtubei."))
+                        || normalized.equals("youtube-ui.l.google.com")
+                        || normalized.startsWith("youtube-ui."));
     }
 
     private static boolean isExcluded(String normalized) {
@@ -108,7 +219,7 @@ final class DomainAggregationPolicy {
                 || normalized.endsWith(".mozilla.net");
     }
 
-    private static String registrableDomain(String normalized) {
+    static String registrableDomain(String normalized) {
         if (normalized.isBlank()) {
             return normalized;
         }
@@ -147,5 +258,19 @@ final class DomainAggregationPolicy {
             }
         }
         return true;
+    }
+
+    private static boolean matchesSuffix(String domain, String suffix) {
+        return domain.equals(suffix) || domain.endsWith("." + suffix);
+    }
+
+    private static boolean matchesAnySuffix(String domain, Set<String> suffixes) {
+        return suffixes.stream().anyMatch(suffix -> matchesSuffix(domain, suffix));
+    }
+
+    private record ServiceDefinition(
+            String canonicalDomain,
+            Set<String> matchDomains,
+            Set<String> blockTargets) {
     }
 }

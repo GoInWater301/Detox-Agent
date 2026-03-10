@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Detox Agent - 차단 목록</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -48,7 +49,7 @@
             </div>
             <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
                 <p class="text-xs text-slate-500">적용 방식</p>
-                <p class="text-sm text-slate-300 mt-2 leading-6">차단 도메인은 Redis `doh:block:{token}` 세트에 저장되고 DoH 필터에서 즉시 참조됩니다.</p>
+                <p class="text-sm text-slate-300 mt-2 leading-6">서비스 대표 도메인을 차단하면 관련 도메인도 함께 저장되고, Redis `doh:block:{token}` 세트로 즉시 동기화됩니다.</p>
             </div>
         </div>
 
@@ -56,7 +57,7 @@
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <h2 class="text-sm font-medium text-slate-200">현재 차단 목록</h2>
-                    <p class="text-xs text-slate-500 mt-1">도메인 단위로 차단하며, 필요시 바로 해제할 수 있습니다.</p>
+                    <p class="text-xs text-slate-500 mt-1">서비스 차단 시 관련 도메인까지 함께 등록되며, 필요시 바로 해제할 수 있습니다.</p>
                 </div>
                 <button type="button" onclick="loadBlockedDomains()" class="text-xs text-slate-400 hover:text-slate-200 transition">새로고침</button>
             </div>
@@ -159,7 +160,7 @@
             if (method === 'POST') {
                 if (!blockedDomains.includes(domain)) blockedDomains.push(domain);
                 blockedDomains.sort((a, b) => a.localeCompare(b));
-                showToast(`${domain} 차단됨`);
+                showToast(`${domain} 관련 도메인 차단됨`);
             } else {
                 blockedDomains = blockedDomains.filter(item => item !== domain);
                 showToast(`${domain} 차단 해제됨`);

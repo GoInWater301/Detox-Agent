@@ -34,7 +34,7 @@ public class SecurityConfig {
                                 "/webjars/**"
                         ).permitAll()
                         .pathMatchers("/", "/login", "/register", "/dashboard", "/review", "/blocklist",
-                                "/static/**", "/favicon.ico").permitAll()
+                                "/static/**", "/favicon.ico", "/favicon.svg").permitAll()
                         .anyExchange().authenticated()
                 )
                 .addFilterAt(jwtAuthFilter, SecurityWebFiltersOrder.AUTHENTICATION)

@@ -5,6 +5,10 @@ import com.pnu.detox_agent.webserver.entity.UserEntity;
 import com.pnu.detox_agent.webserver.repository.BlockedDomainRepository;
 import com.pnu.detox_agent.webserver.repository.UserRepository;
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -35,26 +39,35 @@ public class BlocklistService {
     }
 
     public Mono<Long> blockDomain(String username, String domain) {
-        String normalized = normalizeDomain(domain);
-        if (normalized.isBlank()) {
+        Set<String> targets = expandStoredDomains(domain);
+        if (targets.isEmpty()) {
             return Mono.just(0L);
         }
         return resolveUser(username)
-                .flatMap(user -> blockedDomainRepository.findByUserTokenAndDomain(user.getDohToken(), normalized)
-                        .switchIfEmpty(blockedDomainRepository.save(newBlockedDomain(user.getDohToken(), normalized)))
-                        .then(syncRedisBlockEntry(user.getDohToken(), normalized))
-                        .thenReturn(1L));
+                .flatMap(user -> blockedDomainRepository.findAllByUserTokenAndDomainIn(user.getDohToken(), targets)
+                        .map(BlockedDomainEntity::getDomain)
+                        .collect(Collectors.toSet())
+                        .flatMap(existing -> {
+                            List<BlockedDomainEntity> missing = targets.stream()
+                                    .filter(domainTarget -> !existing.contains(domainTarget))
+                                    .map(domainTarget -> newBlockedDomain(user.getDohToken(), domainTarget))
+                                    .toList();
+                            return blockedDomainRepository.saveAll(missing)
+                                    .then()
+                                    .then(resyncUserBlocklist(user))
+                                    .thenReturn((long) missing.size());
+                        }));
     }
 
     public Mono<Long> unblockDomain(String username, String domain) {
-        String normalized = normalizeDomain(domain);
-        if (normalized.isBlank()) {
+        Set<String> targets = expandStoredDomains(domain);
+        if (targets.isEmpty()) {
             return Mono.just(0L);
         }
         return resolveUser(username)
-                .flatMap(user -> blockedDomainRepository.deleteByUserTokenAndDomain(user.getDohToken(), normalized)
-                        .then(redisTemplate.opsForSet().remove(blockKey(user.getDohToken()), normalized))
-                        .thenReturn(1L));
+                .flatMap(user -> blockedDomainRepository.deleteAllByUserTokenAndDomainIn(user.getDohToken(), targets)
+                        .then(resyncUserBlocklist(user))
+                        .thenReturn((long) targets.size()));
     }
 
     public Mono<Void> warmupRedisFromDatabase() {
@@ -75,18 +88,11 @@ public class BlocklistService {
         return "doh:block:" + userToken;
     }
 
-    private Mono<Boolean> syncRedisBlockEntry(String userToken, String domain) {
-        return redisTemplate.opsForSet().add(blockKey(userToken), domain)
-                .map(added -> added > 0);
-    }
-
-    private Mono<Void> syncRedisBlocklist(String userToken, java.util.List<String> domains) {
-        String key = blockKey(userToken);
-        return redisTemplate.unlink(key)
-                .then(Mono.defer(() -> domains.isEmpty()
-                        ? Mono.empty()
-                        : redisTemplate.opsForSet().add(key, domains.toArray(String[]::new)).then()))
-                .then();
+    private Mono<Void> resyncUserBlocklist(UserEntity user) {
+        return blockedDomainRepository.findAllByUserTokenOrderByDomainAsc(user.getDohToken())
+                .map(BlockedDomainEntity::getDomain)
+                .collectList()
+                .flatMap(domains -> syncRedisBlocklist(user.getDohToken(), domains));
     }
 
     private BlockedDomainEntity newBlockedDomain(String userToken, String domain) {
@@ -98,13 +104,39 @@ public class BlocklistService {
     }
 
     private String normalizeDomain(String domain) {
-        if (domain == null) {
-            return "";
+        String normalized = DomainAggregationPolicy.normalizeHost(domain);
+        if (normalized.isBlank()) {
+            return normalized;
         }
-        String normalized = domain.trim().toLowerCase();
-        while (normalized.endsWith(".")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
+        String registrable = DomainAggregationPolicy.registrableDomain(normalized);
+        return DomainAggregationPolicy.toBlockedServiceDomain(registrable);
+    }
+
+    private Set<String> expandStoredDomains(String domain) {
+        String normalized = normalizeDomain(domain);
+        if (normalized.isBlank()) {
+            return Set.of();
         }
-        return normalized;
+        return new LinkedHashSet<>(DomainAggregationPolicy.toBlockTargets(normalized));
+    }
+
+    private Mono<Void> syncRedisBlocklist(String userToken, List<String> domains) {
+        String key = blockKey(userToken);
+        String[] targets = expandDomains(domains).stream()
+                .sorted()
+                .toArray(String[]::new);
+
+        return redisTemplate.unlink(key)
+                .then(Mono.defer(() -> targets.length == 0
+                        ? Mono.empty()
+                        : redisTemplate.opsForSet().add(key, targets).then()))
+                .then();
+    }
+
+    private Set<String> expandDomains(List<String> domains) {
+        return domains.stream()
+                .map(DomainAggregationPolicy::toBlockTargets)
+                .flatMap(Set::stream)
+                .collect(Collectors.toSet());
     }
 }
