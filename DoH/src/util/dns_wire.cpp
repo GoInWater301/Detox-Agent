@@ -13,7 +13,7 @@ bool is_dns_truncated(std::span<const uint8_t> msg) noexcept {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NXDOMAIN synthesis
+// Block response synthesis
 //
 // DNS header (12 bytes):
 //   Byte 0-1: Transaction ID  (copy from query)
@@ -24,7 +24,7 @@ bool is_dns_truncated(std::span<const uint8_t> msg) noexcept {
 //             TC=0   → not truncated
 //             RD     → mirror from query  (bit 0 of byte 2)
 //   Byte 3:   RA(0) Z(0) AD(0) CD(0) RCODE(3)
-//             RCODE=3 → NXDOMAIN
+//             RCODE   → caller-selected block response code
 //   Bytes 4-5: QDCOUNT (mirror from query, usually 0x0001)
 //   Bytes 6-7: ANCOUNT = 0
 //   Bytes 8-9: NSCOUNT = 0
@@ -32,7 +32,10 @@ bool is_dns_truncated(std::span<const uint8_t> msg) noexcept {
 // Question section: copied verbatim from query[12..end].
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::vector<uint8_t> dns_make_nxdomain(std::span<const uint8_t> query) noexcept {
+namespace {
+
+std::vector<uint8_t> dns_make_block_response(std::span<const uint8_t> query,
+                                             uint8_t rcode) noexcept {
     if (query.size() < 12) return {};
 
     std::vector<uint8_t> resp;
@@ -44,8 +47,8 @@ std::vector<uint8_t> dns_make_nxdomain(std::span<const uint8_t> query) noexcept 
 
     // Flags byte 2: QR=1, OPCODE=mirror, AA=1, TC=0, RD=mirror
     resp.push_back(static_cast<uint8_t>(0x84u | (query[2] & 0x79u)));
-    // Flags byte 3: RA=0, RCODE=3 (NXDOMAIN)
-    resp.push_back(0x03u);
+    // Flags byte 3: RA=0, Z=0, AD=0, CD=0, low 4 bits = RCODE
+    resp.push_back(static_cast<uint8_t>(rcode & 0x0Fu));
 
     // QDCOUNT (mirror)
     resp.push_back(query[4]);
@@ -61,6 +64,16 @@ std::vector<uint8_t> dns_make_nxdomain(std::span<const uint8_t> query) noexcept 
     resp.insert(resp.end(), query.begin() + 12, query.end());
 
     return resp;
+}
+
+} // namespace
+
+std::vector<uint8_t> dns_make_nxdomain(std::span<const uint8_t> query) noexcept {
+    return dns_make_block_response(query, 0x03u);
+}
+
+std::vector<uint8_t> dns_make_refused(std::span<const uint8_t> query) noexcept {
+    return dns_make_block_response(query, 0x05u);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

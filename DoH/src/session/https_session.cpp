@@ -132,16 +132,29 @@ void HttpsSession::handle_doh_request() {
             (bool blocked) mutable
             {
                 if (blocked) {
-                    // Synthesize NXDOMAIN — never touches the upstream DNS server.
-                    auto nxd = util::dns_make_nxdomain(payload);
-                    if (nxd.empty()) {
+                    // Synthesize the configured DNS block response. The query
+                    // never touches the upstream DNS server.
+                    std::vector<uint8_t> response;
+                    const char* policy_name = "NXDOMAIN";
+                    switch (self->cfg_.block_response_policy) {
+                    case BlockResponsePolicy::refused:
+                        response = util::dns_make_refused(payload);
+                        policy_name = "REFUSED";
+                        break;
+                    case BlockResponsePolicy::nxdomain:
+                    default:
+                        response = util::dns_make_nxdomain(payload);
+                        break;
+                    }
+                    if (response.empty()) {
                         self->do_send(self->make_error_response(
                             http::status::bad_request, "Malformed DNS query"));
                         return;
                     }
-                    spdlog::info("NXDOMAIN synthesized [{}/{}] domain={}",
-                                 self->client_ip_, user_id, queried_domain);
-                    self->do_send(self->make_dns_response(std::move(nxd),
+                    spdlog::info("{} synthesized [{}/{}] domain={}",
+                                 policy_name, self->client_ip_, user_id,
+                                 queried_domain);
+                    self->do_send(self->make_dns_response(std::move(response),
                                                           self->cfg_.dns_min_ttl_s));
                     return;
                 }

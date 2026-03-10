@@ -1,7 +1,7 @@
 # 도메인 필터
 
 사용자별 / 전역 도메인 차단 기능입니다.
-Redis SET을 사용하며, 차단된 도메인에는 합성 **NXDOMAIN** DNS 응답을 반환합니다.
+Redis SET을 사용하며, 차단된 도메인에는 합성 **NXDOMAIN** 또는 **REFUSED** DNS 응답을 반환합니다.
 
 ---
 
@@ -12,6 +12,7 @@ DOH_FILTER_ENABLED=true
 DOH_REDIS_HOST=127.0.0.1
 DOH_REDIS_PORT=6379
 DOH_REDIS_PASSWORD=            # 없으면 생략
+DOH_BLOCK_RESPONSE=NXDOMAIN   # 또는 REFUSED
 ```
 
 ---
@@ -89,7 +90,7 @@ redis-cli SISMEMBER doh:block:alice  example.com       # suffix 매칭
 
 ## 차단 동작
 
-차단된 도메인에 대해 서버는 **합성 NXDOMAIN** DNS 응답을 반환합니다.
+차단된 도메인에 대해 서버는 설정값에 따라 **합성 NXDOMAIN** 또는 **REFUSED** DNS 응답을 반환합니다.
 업스트림 DNS 서버에는 쿼리가 전달되지 않습니다.
 
 ```
@@ -98,15 +99,15 @@ Client                          DoH Server           Redis
   │                             │── EVAL script ──────►│
   │                             │◄── 1 (blocked) ──────│
   │                             │  (upstream DNS never contacted)
-  │◄── 200 OK (NXDOMAIN) ──────│
+  │◄── 200 OK (synthetic block response) ──────│
 ```
 
-### NXDOMAIN 응답 구조
+### 차단 응답 구조
 
 ```
 DNS Header:
   ID:      (원본 쿼리 ID 복사)
-  Flags:   QR=1, AA=1, RCODE=3 (NXDOMAIN)
+  Flags:   QR=1, AA=1, RCODE=3 (NXDOMAIN) 또는 5 (REFUSED)
   QDCOUNT: 1
   ANCOUNT: 0
   NSCOUNT: 0
@@ -114,7 +115,8 @@ DNS Header:
 Question:  (원본 쿼리 Question Section 복사)
 ```
 
-클라이언트(브라우저, OS 리졸버)는 이를 "도메인이 존재하지 않음"으로 해석합니다.
+클라이언트(브라우저, OS 리졸버)는 이를 "도메인이 존재하지 않음" 또는
+"정책상 질의 거부"로 해석합니다.
 
 ---
 

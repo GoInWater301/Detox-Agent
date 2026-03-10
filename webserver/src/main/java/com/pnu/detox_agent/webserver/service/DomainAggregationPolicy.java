@@ -21,6 +21,7 @@ final class DomainAggregationPolicy {
     private static final Set<String> EXCLUDED_EXACT_DOMAINS = Set.of(
             "jsdelivr.net",
             "tailwindcss.com",
+            "leeswallow.click",
             "cloudfront.net",
             "gstatic.com",
             "doubleclick.net",

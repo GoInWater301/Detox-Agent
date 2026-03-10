@@ -73,6 +73,20 @@ export KEY=value        # export 접두사 지원
 | `DOH_ANALYTICS_EP` | `localhost:50051` | 분석 서버 gRPC 엔드포인트 (`host:port`) |
 | `DOH_ANALYTICS_CAP` | `4096` | 분석 이벤트 인메모리 큐 최대 크기. 초과 시 가장 오래된 이벤트 드롭 |
 
+### 도메인 필터
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `DOH_FILTER_ENABLED` | `false` | Redis 기반 도메인 차단 필터 활성화 |
+| `DOH_REDIS_HOST` | `127.0.0.1` | Redis 호스트 |
+| `DOH_REDIS_PORT` | `6379` | Redis 포트 |
+| `DOH_REDIS_PASSWORD` | `""` | Redis 비밀번호. 없으면 빈 문자열 |
+| `DOH_BLOCK_RESPONSE` | `NXDOMAIN` | 차단 시 합성할 DNS 응답 코드. `NXDOMAIN` 또는 `REFUSED` |
+
+> `DOH_BLOCK_RESPONSE=REFUSED` 는 정책 차단 의미에 더 가깝습니다.
+> 다만 일부 클라이언트는 다른 리졸버 재시도를 시도할 수 있으므로,
+> 우회 저항성을 우선하면 기본값 `NXDOMAIN` 유지가 더 실용적입니다.
+
 ### DNS TTL 오버라이드 (사용자 모니터링)
 
 | 변수 | 기본값 | 설명 |
