@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: detox-config
+  namespace: detox
+data:
+  SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/detox_analytics
+  SPRING_R2DBC_USERNAME: detox
+  SPRING_DATA_REDIS_HOST: redis
+  SPRING_DATA_REDIS_PORT: "6379"
+  AI_AGENT_GRPC_HOST: agent
+  AI_AGENT_GRPC_PORT: "50051"
+  AI_AGENT_GRPC_USE_PLAINTEXT: "true"
+  USAGE_GRPC_HOST: webserver
+  USAGE_GRPC_PORT: "9090"

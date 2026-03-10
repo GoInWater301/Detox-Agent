@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: detox-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-detox_analytics}
+      POSTGRES_USER: ${POSTGRES_USER:-detox}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-detox}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U detox -d detox_analytics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: detox-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  webserver:
+    build:
+      context: ./webserver
+      dockerfile: Dockerfile
+    container_name: detox-webserver
+    environment:
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/${POSTGRES_DB:-detox_analytics}
+      SPRING_R2DBC_USERNAME: ${POSTGRES_USER:-detox}
+      SPRING_R2DBC_PASSWORD: ${POSTGRES_PASSWORD:-detox}
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
+      AI_AGENT_GRPC_HOST: ${AI_AGENT_GRPC_HOST:-agent}
+      AI_AGENT_GRPC_PORT: ${AI_AGENT_GRPC_PORT:-50051}
+      AI_AGENT_GRPC_USE_PLAINTEXT: ${AI_AGENT_GRPC_USE_PLAINTEXT:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${WEBSERVER_HOST_PORT:-8080}:8080"
+
+  agent:
+    build:
+      context: ./Agent
+      dockerfile: Dockerfile
+    container_name: detox-agent
+    environment:
+      USAGE_GRPC_HOST: ${USAGE_GRPC_HOST:-webserver}
+      USAGE_GRPC_PORT: ${USAGE_GRPC_PORT:-9090}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      - webserver
+    ports:
+      - "${AGENT_HOST_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: detox-frontend
+    depends_on:
+      - webserver
+    ports:
+      - "${FRONTEND_HOST_PORT:-3000}:80"
+
+volumes:
+  postgres_data:
