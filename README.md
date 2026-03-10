@@ -1,4 +1,4 @@
-# DetoxAgent
+# DetoxAgent 🛡️📊
 
 > DNS filtering, usage analytics, and AI-assisted digital habit review
 
@@ -136,6 +136,45 @@ cd DoH
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
 cmake --build build
 ```
+
+### 셸 스크립트로 3개 서비스 동시 실행
+
+`webserver`, `Agent`, `DoH`를 한 번에 띄우려면:
+
+```sh
+sh scripts/local-up.sh
+sh scripts/local-status.sh
+```
+
+종료:
+
+```sh
+sh scripts/local-down.sh
+```
+
+실행 전 권장 순서:
+
+```sh
+sudo fuser -k 8080/tcp 8000/tcp 50052/tcp 8443/tcp
+```
+
+DoH는 기본적으로 인증서 파일이 필요합니다. 로컬 테스트용 self-signed 인증서는 다음처럼 만들 수 있습니다.
+
+```sh
+cd DoH
+mkdir -p certs
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout certs/privkey.pem \
+  -out certs/fullchain.pem \
+  -subj "/CN=localhost"
+cd ..
+```
+
+주의 사항:
+- `scripts/local-up.sh`는 가능하면 `sudo` 없이 실행하는 편이 안전합니다.
+- `sudo`는 포트 점유 프로세스 정리할 때만 사용하는 것을 권장합니다.
+- 로그는 `logs/` 디렉터리에 저장됩니다.
+- 셸 환경에 따라 `uv`가 PATH에 없을 수 있으므로 필요하면 `UV_BIN=/home/<user>/.local/bin/uv` 를 명시해 실행하세요.
 
 ## 주요 엔드포인트
 

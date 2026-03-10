@@ -10,6 +10,14 @@ sh scripts/local-status.sh
 sh scripts/local-down.sh
 ```
 
+권장 시작 순서:
+
+```sh
+sudo fuser -k 8080/tcp 8000/tcp 50052/tcp 8443/tcp
+sh scripts/local-up.sh
+sh scripts/local-status.sh
+```
+
 ## 로그
 
 - 로그 디렉터리: `logs/`
@@ -28,13 +36,42 @@ sh scripts/local-down.sh
 - `Agent`: `uv run main.py` 가능해야 함
 - `DoH`: `./build/doh-forwarder` 또는 `DOH_BINARY` 로 지정한 실행 파일이 있어야 함
 - PostgreSQL / Redis 는 Docker가 아닌 별도 로컬 또는 외부 환경에서 준비되어 있어야 함
+- DoH TLS 인증서 파일이 준비되어 있어야 함
+
+## 로컬 TLS 인증서 예시
+
+테스트용 self-signed 인증서 생성:
+
+```sh
+cd DoH
+mkdir -p certs
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout certs/privkey.pem \
+  -out certs/fullchain.pem \
+  -subj "/CN=localhost"
+cd ..
+```
 
 ## DoH 기본값
 
 - `DOH_LISTEN_PORT` 기본값은 `8443`
 - `DOH_ANALYTICS_EP` 기본값은 `localhost:50051`
+- `DOH_CERT_CHAIN` 기본값은 `certs/fullchain.pem`
+- `DOH_PRIVATE_KEY` 기본값은 `certs/privkey.pem`
 - 다른 바이너리를 쓰려면 예시처럼 실행합니다:
 
 ```sh
 DOH_BINARY=./build-release/doh-forwarder sh scripts/local-up.sh
 ```
+
+`uv`가 기본 PATH에 없으면:
+
+```sh
+UV_BIN=/home/<user>/.local/bin/uv sh scripts/local-up.sh
+```
+
+## 주의 사항
+
+- `local-up.sh`는 가능하면 `sudo` 없이 실행하세요.
+- `sudo`로 실행하면 셸 환경이 달라져 `uv` 경로 문제가 생길 수 있습니다.
+- 포트 정리나 강제 종료가 필요할 때만 `sudo`를 쓰는 편이 안전합니다.
