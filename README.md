@@ -2,6 +2,10 @@
 
 > DNS filtering, usage analytics, and AI-assisted digital habit review
 
+<img width="1432" height="846" alt="image" src="https://github.com/user-attachments/assets/7acdbd15-09dc-4bc1-9785-dc26228f4afe" />
+
+
+
 DetoxAgent는 개인 전용 DoH(DNS-over-HTTPS) 엔드포인트를 통해 DNS 요청을 수집하고, 사용자별 사용 패턴을 집계한 뒤 대시보드와 AI 리뷰로 보여주는 프로젝트입니다.
 
 현재 저장소에는 다음 구성이 포함되어 있습니다.
