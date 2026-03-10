@@ -1,214 +1,191 @@
-# 🧬 PrimerFlow
+# DetoxAgent
 
-> **High-Performance PCR Primer Design & Visualization Platform**
+> DNS filtering, usage analytics, and AI-assisted digital habit review
 
-PrimerFlow는 생명과학 연구원들이 PCR 프라이머를 더 빠르고 명확하게 설계할 수 있도록 돕는 웹 기반 플랫폼입니다.  
-DNA 템플릿 시퀀스를 입력하면 프라이머 후보를 생성하고, 결과를 시각적으로 탐색할 수 있습니다.
+DetoxAgent는 개인 전용 DoH(DNS-over-HTTPS) 엔드포인트를 통해 DNS 요청을 수집하고, 사용자별 사용 패턴을 집계한 뒤 대시보드와 AI 리뷰로 보여주는 프로젝트입니다.
 
-## 프로젝트 개요
+현재 저장소에는 다음 구성이 포함되어 있습니다.
+- `DoH`: C++ 기반 DoH forwarder
+- `webserver`: Spring WebFlux 기반 인증, 집계, 대시보드 API
+- `Agent`: Python 기반 AI 리뷰 서비스
+- `frontend`: React/Vite 기반 대시보드 UI
 
-- DNA 템플릿 시퀀스 기반 PCR 프라이머 후보 생성
-- 후보 위치를 결과 화면에서 시각적으로 확인
-- 확대/축소 및 패닝으로 원하는 구간 탐색
-- 프론트엔드와 백엔드가 분리된 구조로 설계 및 검증 로직 운영
+## 프로젝트 목표
 
-## 주요 기능
+- 사용자별 DoH 엔드포인트 발급
+- DNS 이벤트 실시간 수집 및 저장
+- 기간별 사용량 집계와 도메인 분석
+- 차단 목록 관리
+- AI 기반 사용 패턴 리뷰 스트리밍
 
-### Step 1. Input Sequence
-- 직접 입력, 파일 업로드, 붙여넣기 지원
-- `A`, `T`, `G`, `C` 외 문자는 정리 대상
-- 공백, 줄바꿈, FASTA 헤더(`>`) 자동 정리
-- 유효한 염기서열이 없으면 다음 단계 및 생성 차단
+## 현재 구현 범위
 
-### Step 2. Primer Properties
-- GC, Tm, 농도 등 프라이머 조건 설정
+### 구현됨
+- 회원가입 / 로그인 / JWT 인증
+- 사용자별 DoH URL 발급
+- DoH 요청 수신 및 upstream DNS forwarding
+- WebServer gRPC 수집기로 DNS 이벤트 적재
+- Redis + PostgreSQL 기반 사용량 집계
+- 일/주/월 사용량 조회 API
+- 차단 도메인 CRUD 및 Redis 동기화
+- React 대시보드와 AI 리뷰 스트리밍 UI
+- Docker Compose 기반 로컬 통합 실행
 
-### Step 3. Binding Location
-- 결합 위치 관련 옵션 확인
-- `Restriction Enzymes`는 Enter 또는 쉼표로 태그 입력
-- 잘못 넣은 효소명은 태그 클릭으로 제거
+### 미구현 또는 후속 작업
+- Prometheus / Grafana 등 모니터링 스택
+- 운영용 배포 자동화 완성
+- Nudge landing page 전체 흐름
+- 실서비스 수준의 보안/운영 하드닝
 
-### Step 4. Specificity & Preview
-- 특이성 옵션 확인
-- 캔버스 미리보기 및 확대/축소, 휠 줌, 드래그 패닝 지원
+## 아키텍처
 
-### Result
-- `Generate Primers` 실행 후 결과 탭에서 후보 구간 시각화
-- Zoom / Reset / Close 기반 결과 탐색 지원
+```mermaid
+graph TD
+    U[User Device] -->|DoH Query| D[DoH Server]
+    D -->|gRPC Stream| W[WebServer]
+    W -->|R2DBC| P[(PostgreSQL)]
+    W -->|Reactive| R[(Redis)]
+    F[Frontend] -->|REST / SSE| W
+    W -->|gRPC| A[AI Agent]
+```
 
-## 프로젝트 구조
+## 서비스 구성
+
+### DoH
+- 경로 기반 사용자 식별: `/{dohToken}/dns-query`
+- UDP 우선 조회 후 truncation 또는 timeout 시 TCP fallback
+- 허용된 DNS 이벤트를 WebServer로 gRPC 스트리밍
+- Redis 차단 목록 기반 필터링
+
+상세 문서: [DoH/README.md](/home/min/Workspace/Portfolio/Detox-Agent/DoH/README.md)
+
+### WebServer
+- Spring WebFlux 기반 REST/gRPC 서버
+- 인증, 대시보드 API, 집계, 차단 목록 관리 담당
+- Redis 실시간 상태와 PostgreSQL 영속 데이터를 함께 사용
+- AI 리뷰 요청을 Agent와 연결
+
+관련 문서: [docs/OVERVIEW.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/OVERVIEW.md)
+
+### Agent
+- FastAPI + gRPC 기반 AI 리뷰 서비스
+- 사용량 데이터를 바탕으로 요약, 위험 신호, 실행 조언 생성
+- OpenAI 키가 없을 때는 mock 응답으로 fallback
+
+상세 문서: [Agent/README.md](/home/min/Workspace/Portfolio/Detox-Agent/Agent/README.md)
+
+### Frontend
+- React/Vite 기반 로그인, 회원가입, 대시보드 UI
+- 사용량 요약, 도메인 랭킹, 타임라인 조회
+- SSE 기반 AI 리뷰 스트리밍 표시
+
+## 저장소 구조
 
 ```text
-frontend/
-├─ app/
-│  ├─ page.tsx
-│  ├─ result/
-│  │  ├─ page.tsx
-│  │  └─ ResultClientPage.tsx
-│  ├─ layout.tsx
-│  └─ providers.tsx
-├─ components/
-│  ├─ canvas/GenomeCanvas.tsx
-│  ├─ steps/
-│  ├─ ui/
-│  └─ PrimerResultModal.tsx
-├─ src/
-│  ├─ lib/
-│  ├─ services/analysisService.ts
-│  └─ types/
-├─ store/useViewStore.ts
-├─ hooks/
-├─ tests/
-backend/
-├─ .github/
-├─ .husky/
-├─ app/
-│  ├─ main.py
-│  ├─ api/
-│  │  └─ v1/
-│  │     └─ endpoints/
-│  │        ├─ design.py
-│  │        └─ health.py
-│  ├─ algorithms/
-│  └─ schemas/
-├─ database/
-├─ scripts/
-├─ tests/
-├─ main.py
-├─ requirements.txt
-├─ README.md
-└─ .gitignore
-prompts/
-spec/
-strategy/
-README.md
+.
+├─ Agent/
+├─ DoH/
+├─ deploy/
+├─ docs/
+├─ frontend/
+├─ webserver/
+├─ docker-compose.yml
+└─ README.md
 ```
 
-## 개발 환경 설정
+## 빠른 시작
+
+### 요구 사항
+- Docker / Docker Compose
+- 또는 Java 21, Python 3.13+, Node.js 20+, C++20 빌드 환경
+
+### Docker Compose 실행
+
+```bash
+docker compose up -d --build
+```
+
+기본 포트:
+- Frontend: `http://localhost:3000`
+- WebServer: `http://localhost:8080`
+- Agent: `http://localhost:8000`
+
+종료:
+
+```bash
+docker compose down
+```
+
+## 로컬 개발 실행
+
+### WebServer
+
+```bash
+cd webserver
+./gradlew bootRun
+```
+
+### Agent
+
+```bash
+cd Agent
+uv sync
+uv run main.py
+```
 
 ### Frontend
 
-#### 요구 사항
-- Node.js 20.x 이상
-- npm
-- 로컬 백엔드 서버 `http://127.0.0.1:8000`
-
-#### 설치 및 실행
 ```bash
-npm ci
+cd frontend
+npm install
 npm run dev
 ```
 
-#### 스크립트
-```bash
-npm run dev
-npm run build
-npm run start
-npm run lint
-npm test
-```
+### DoH
 
-### Backend
-
-#### 가상환경 생성
-
-macOS / Linux / WSL 기준:
+환경에 따라 vcpkg / Boost 설정이 필요합니다.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+cd DoH
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+cmake --build build
 ```
 
-#### 의존성 설치 및 실행
-```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+## 주요 엔드포인트
 
-- API: `http://localhost:8000`
-- Swagger: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+### Auth
+- `POST /api/auth/register`
+- `POST /api/auth/login`
 
-## 기술 스택
+### Dashboard
+- `GET /api/dashboard/users/{userId}/usage`
+- `GET /api/dashboard/users/{userId}/domains`
+- `GET /api/dashboard/users/{userId}/timeline`
 
-### Frontend
-- Next.js
-- TypeScript
-- React
-- Tailwind CSS
-- Zustand
-- Axios
-- TanStack Query
-- Vitest
+### Blocklist
+- `GET /api/blocklist`
+- `POST /api/blocklist`
+- `DELETE /api/blocklist/{domain}`
 
-### Backend
-- FastAPI
-- Python
-- Pydantic
-- Uvicorn
-- SQLite
-- pysam
+### AI Review
+- `POST /api/ai/review/stream`
 
-### Quality & Collaboration
-- Ruff
-- Pyright
-- pytest
-- commitlint
-- Husky
+## 검증 상태
 
-## 주간 진행 상황
+최근 로컬 기준 확인된 항목:
+- `python3 -m compileall -q Agent/src Agent/main.py`
+- `./gradlew test --no-daemon`
+- `npm run build`
 
-### Week 6 (26.1.26 - 2.1)
-#### Frontend
-- 대용량 시퀀스 렌더링 성능 최적화
-- Binary Search 기반 뷰포트 탐색으로 고BP 구간 렌더링 부담 완화
-- Canvas 배경 jittering 현상 수정
+주의 사항:
+- Frontend production bundle 크기 경고가 남아 있습니다.
+- DoH 로컬 빌드는 환경 의존성이 큽니다.
+- Python 3.13 요구사항과 로컬 인터프리터 버전은 별도 확인이 필요합니다.
 
-### Week 7 (26.2.2 - 2.8)
-#### Frontend
-- Step 1 입력 정규화 및 검증 UX 개선
-- 붙여넣기/업로드 시 비정상 문자 처리 흐름 정리
-- 대문자 ATGC 변환 및 sanitize 로직 고도화
+## 문서
 
-### Week 8 (26.2.9 - 2.15)
-#### Frontend
-- Mock 응답 제거 후 실서버 응답 구조로 전환
-- API 오류 메시지 및 상태 처리 보강
-- UI 리뉴얼 및 테스트 기반 정비
-
-#### Backend
-- `app/` 기준으로 구조 정리
-- CI 파이프라인 및 Ruff / Pyright 설정 추가
-- `/health` 엔드포인트 테스트 추가
-
-### Week 9 (26.2.16 - 2.22)
-#### Frontend
-- 의존성 보안 업데이트 및 취약점 대응
-- Lint / Test / Build 기준 회귀 점검
-
-#### Backend
-- 원천 데이터 기반 `annotations.db` 구축 스크립트 추가
-- DB 점검 및 통합 확인 스크립트 정리
-- 데이터베이스 문서 보강
-
-### Week 10 (26.2.23 - 3.1)
-#### Frontend
-- Step 3 제한효소 입력 이슈 수정
-- 결과 표시를 모달에서 새 탭 방식으로 전환
-- `amplicon` 용어를 `template`로 통일
-
-#### Backend
-- `health/db` 엔드포인트 추가
-- 루트(`/`) 응답에 문서 및 헬스 체크 링크 제공
-
-## Repobeats
-
-### Frontend
-(3.1 ~ 3.10 기간의 대시보드)
-
-![Alt](https://repobeats.axiom.co/api/embed/d2f58146b1988f61e92f8b0545847f2f910bbb6d.svg "Repobeats analytics image")
-
-### Backend
-(3.1 ~ 3.10 기간의 대시보드)
-
-![Alt](https://repobeats.axiom.co/api/embed/92bffc301187377261452dfd66e7fe73bbb2c8e3.svg "Repobeats analytics image")
+- [docs/OVERVIEW.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/OVERVIEW.md)
+- [docs/backend-integration.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/backend-integration.md)
+- [DoH/README.md](/home/min/Workspace/Portfolio/Detox-Agent/DoH/README.md)
+- [Agent/README.md](/home/min/Workspace/Portfolio/Detox-Agent/Agent/README.md)
+- [deploy/README.md](/home/min/Workspace/Portfolio/Detox-Agent/deploy/README.md)
