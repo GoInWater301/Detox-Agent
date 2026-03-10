@@ -26,7 +26,7 @@ using     tcp   = net::ip::tcp;
 //     → HTTP read
 //       → path / payload validation
 //         → domain filter check  (async, Redis; skipped if filter == nullptr)
-//           ├─ blocked: synthesize NXDOMAIN, HTTP 200, done
+//           ├─ blocked: synthesize configured DNS block response, HTTP 200, done
 //           └─ allowed: DNS forward → clamp TTL → HTTP 200
 //                         → fire-and-forget analytics
 //

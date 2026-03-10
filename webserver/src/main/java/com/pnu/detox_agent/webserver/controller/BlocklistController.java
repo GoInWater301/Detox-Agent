@@ -3,6 +3,7 @@ package com.pnu.detox_agent.webserver.controller;
 import com.pnu.detox_agent.webserver.dto.blocklist.BlockDomainRequestDto;
 import com.pnu.detox_agent.webserver.service.BlocklistService;
 import java.security.Principal;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,8 +26,10 @@ public class BlocklistController {
     }
 
     @GetMapping
-    public Flux<String> listBlockedDomains(Principal principal) {
-        return blocklistService.getBlockedDomains(principal.getName());
+    public Mono<ResponseEntity<List<String>>> listBlockedDomains(Principal principal) {
+        return blocklistService.getBlockedDomains(principal.getName())
+                .collectList()
+                .map(ResponseEntity::ok);
     }
 
     @PostMapping

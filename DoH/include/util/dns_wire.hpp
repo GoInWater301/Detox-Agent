@@ -27,7 +27,7 @@ namespace doh::util {
 // use compression; only responses may).
 [[nodiscard]] std::string dns_query_domain(std::span<const uint8_t> message) noexcept;
 
-// ─── NXDOMAIN synthesis ───────────────────────────────────────────────────────
+// ─── Block response synthesis ────────────────────────────────────────────────
 //
 // Builds a minimal, RFC 1035-compliant NXDOMAIN response from a DNS query.
 //
@@ -40,6 +40,18 @@ namespace doh::util {
 // Returns an empty vector if the query is too short to be valid.
 [[nodiscard]] std::vector<uint8_t>
 dns_make_nxdomain(std::span<const uint8_t> query) noexcept;
+
+// Builds a minimal, RFC 1035-compliant REFUSED response from a DNS query.
+//
+// The returned message:
+//   - Copies the transaction ID and question section from the query.
+//   - Sets QR=1, AA=1, RD (mirrored), RCODE=5 (REFUSED).
+//   - Has ANCOUNT / NSCOUNT / ARCOUNT = 0.
+//
+// Used to signal policy denial without claiming the domain does not exist.
+// Returns an empty vector if the query is too short to be valid.
+[[nodiscard]] std::vector<uint8_t>
+dns_make_refused(std::span<const uint8_t> query) noexcept;
 
 // ─── TTL override ─────────────────────────────────────────────────────────────
 //

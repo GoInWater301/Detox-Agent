@@ -103,6 +103,18 @@ std::size_t env_sz(const char* key, std::size_t def) {
     return v ? static_cast<std::size_t>(std::stoull(v)) : def;
 }
 
+BlockResponsePolicy env_block_response_policy(const char* key,
+                                              BlockResponsePolicy def) {
+    const std::string value = env_str(key, "NXDOMAIN");
+    if (value == "REFUSED" || value == "refused") {
+        return BlockResponsePolicy::refused;
+    }
+    if (value != "NXDOMAIN" && value != "nxdomain") {
+        spdlog::warn("Invalid {}='{}'; falling back to NXDOMAIN", key, value);
+    }
+    return def;
+}
+
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,6 +139,8 @@ Config Config::from_env() {
     c.redis_host           = env_str("DOH_REDIS_HOST",     "127.0.0.1");
     c.redis_port           = env_u16("DOH_REDIS_PORT",     6379);
     c.redis_password       = env_str("DOH_REDIS_PASSWORD", "");
+    c.block_response_policy = env_block_response_policy(
+        "DOH_BLOCK_RESPONSE", BlockResponsePolicy::nxdomain);
     c.analytics_endpoint   = env_str("DOH_ANALYTICS_EP",   "localhost:50051");
     c.analytics_queue_cap  = env_sz ("DOH_ANALYTICS_CAP",  4096);
 

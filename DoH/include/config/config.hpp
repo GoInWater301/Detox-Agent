@@ -6,6 +6,11 @@
 
 namespace doh {
 
+enum class BlockResponsePolicy {
+    nxdomain,
+    refused,
+};
+
 // All runtime settings. Populated once at startup from environment variables.
 // Treated as immutable after construction.
 struct Config {
@@ -34,6 +39,7 @@ struct Config {
     std::string redis_host       = "127.0.0.1";
     uint16_t    redis_port       = 6379;
     std::string redis_password   = "";
+    BlockResponsePolicy block_response_policy = BlockResponsePolicy::nxdomain;
 
     // Analytics gRPC (fire-and-forget)
     std::string analytics_endpoint  = "localhost:50051";
