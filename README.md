@@ -245,6 +245,9 @@ cd ..
 - PR 템플릿과 리뷰 메모를 추가해 변경 단위를 설명하기 쉽게 맞췄습니다.
 - 미구현 영역과 후속 과제를 분리해 문서상 과장된 표현을 제거했습니다.
 
+## 활동 추적
+![Alt](https://repobeats.axiom.co/api/embed/4b6bd140ccb83643119cf990808de68b920ebdb0.svg "Repobeats analytics image")
+
 ## 문서
 
 - [docs/OVERVIEW.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/OVERVIEW.md)
