@@ -1,7 +1,7 @@
 [project]
 name = "agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "Detox-Agent를 위한 AI 분석 및 리뷰 에이전트"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
