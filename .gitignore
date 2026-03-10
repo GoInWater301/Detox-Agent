@@ -9,5 +9,5 @@ DoH/build/
 DoH/build-codex/
 DoH/.codex/
 **/__pycache__/
-frontend/node_modules/
-frontend/dist/
+logs/
+.run/

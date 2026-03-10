@@ -71,18 +71,6 @@ services:
     networks:
       - detox_net
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: detox-frontend
-    depends_on:
-      - webserver
-    ports:
-      - "${FRONTEND_HOST_PORT:-3000}:80"
-    networks:
-      - detox_net
-
 volumes:
   postgres_data:
 
