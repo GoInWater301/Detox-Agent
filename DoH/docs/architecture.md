@@ -18,7 +18,7 @@ Client (HTTPS/DoH)
 │         │                                           │
 │         ├─ dns/DnsForwarder ──────────────────────► DNS Upstream
 │         │      ├─ UdpUpstream (1차 시도)            │  (8.8.8.8:53)
-│         │      └─ TcpUpstream (TC=1 fallback)       │
+│         │      └─ TcpUpstream (TC=1 / UDP timeout fallback) │
 │         │                                           │
 │         └─ analytics/GrpcStreamClient ────────────► Analytics Server
 │                (fire-and-forget, 비동기 큐)         │  (gRPC :50051)
@@ -51,7 +51,7 @@ Client (HTTPS/DoH)
 
 6. DNS 전달            DnsForwarder::async_forward()
                          ├─ UdpUpstream::async_query()   (timeout: dns_timeout_ms)
-                         │    └─ TC=1? → TcpUpstream::async_query() (timeout: ×2)
+                         │    └─ TC=1 또는 timeout? → TcpUpstream::async_query() (timeout: ×2)
                          └─ callback with raw DNS response
 
 7. 분석 전송           GrpcStreamClient::send()  [non-blocking, enqueue]

@@ -1,5 +1,6 @@
 #include "filter/redis_domain_filter.hpp"
 
+#include <boost/redis/src.hpp>
 #include <spdlog/spdlog.h>
 
 namespace doh::filter {
