@@ -1,115 +1,214 @@
-# 🚀 Detox-Agent Backend: 디지털 중독 방지 시스템
+# 🧬 PrimerFlow
 
-디지털 중독 문제를 해결하기 위해 네트워크 수준의 DNS 필터링과 AI 기반의 사용 패턴 분석을 결합한 고성능 백엔드 생태계입니다.
+> **High-Performance PCR Primer Design & Visualization Platform**
 
-## 🎯 프로젝트 개요
+PrimerFlow는 생명과학 연구원들이 PCR 프라이머를 더 빠르고 명확하게 설계할 수 있도록 돕는 웹 기반 플랫폼입니다.  
+DNA 템플릿 시퀀스를 입력하면 프라이머 후보를 생성하고, 결과를 시각적으로 탐색할 수 있습니다.
 
-Detox-Agent는 사용자가 자신의 디지털 습관을 인지하고 제어할 수 있도록 돕습니다. 네트워크 레벨에서 DNS 쿼리를 가로채어 유해/중독성 사이트 접속을 제어하고, 수집된 데이터를 AI가 분석하여 개인 맞춤형 리포트와 가이드를 제공합니다.
+## 프로젝트 개요
 
-## 🏗️ 전체 시스템 아키텍처
+- DNA 템플릿 시퀀스 기반 PCR 프라이머 후보 생성
+- 후보 위치를 결과 화면에서 시각적으로 확인
+- 확대/축소 및 패닝으로 원하는 구간 탐색
+- 프론트엔드와 백엔드가 분리된 구조로 설계 및 검증 로직 운영
 
-본 시스템은 마이크로서비스 아키텍처(MSA)를 따르며, 성능 최적화를 위해 gRPC를 주요 통신 프로토콜로 사용합니다.
+## 주요 기능
 
-```mermaid
-graph TD
-    User([사용자 기기]) -->|DoH 쿼리| A[DoH Server - C++]
-    A -->|gRPC Stream| B[WebServer - Java/Spring Boot]
-    B -->|R2DBC| DB[(PostgreSQL)]
-    B -->|Reactive| CACHE[(Redis)]
-    C[AI Agent - Python] -->|gRPC Request| B
-    B -->|REST API| D[Frontend Dashboard]
-    D -->|REST API| C[AI Agent Analysis]
+### Step 1. Input Sequence
+- 직접 입력, 파일 업로드, 붙여넣기 지원
+- `A`, `T`, `G`, `C` 외 문자는 정리 대상
+- 공백, 줄바꿈, FASTA 헤더(`>`) 자동 정리
+- 유효한 염기서열이 없으면 다음 단계 및 생성 차단
+
+### Step 2. Primer Properties
+- GC, Tm, 농도 등 프라이머 조건 설정
+
+### Step 3. Binding Location
+- 결합 위치 관련 옵션 확인
+- `Restriction Enzymes`는 Enter 또는 쉼표로 태그 입력
+- 잘못 넣은 효소명은 태그 클릭으로 제거
+
+### Step 4. Specificity & Preview
+- 특이성 옵션 확인
+- 캔버스 미리보기 및 확대/축소, 휠 줌, 드래그 패닝 지원
+
+### Result
+- `Generate Primers` 실행 후 결과 탭에서 후보 구간 시각화
+- Zoom / Reset / Close 기반 결과 탐색 지원
+
+## 프로젝트 구조
+
+```text
+frontend/
+├─ app/
+│  ├─ page.tsx
+│  ├─ result/
+│  │  ├─ page.tsx
+│  │  └─ ResultClientPage.tsx
+│  ├─ layout.tsx
+│  └─ providers.tsx
+├─ components/
+│  ├─ canvas/GenomeCanvas.tsx
+│  ├─ steps/
+│  ├─ ui/
+│  └─ PrimerResultModal.tsx
+├─ src/
+│  ├─ lib/
+│  ├─ services/analysisService.ts
+│  └─ types/
+├─ store/useViewStore.ts
+├─ hooks/
+├─ tests/
+backend/
+├─ .github/
+├─ .husky/
+├─ app/
+│  ├─ main.py
+│  ├─ api/
+│  │  └─ v1/
+│  │     └─ endpoints/
+│  │        ├─ design.py
+│  │        └─ health.py
+│  ├─ algorithms/
+│  └─ schemas/
+├─ database/
+├─ scripts/
+├─ tests/
+├─ main.py
+├─ requirements.txt
+├─ README.md
+└─ .gitignore
+prompts/
+spec/
+strategy/
+README.md
 ```
 
-### 서비스 간 통신 매커니즘
-1.  **DoH Server → WebServer**: DNS 쿼리 발생 시 실시간으로 gRPC 클라이언트 스트리밍을 통해 분석 데이터를 전송합니다.
-2.  **AI Agent → WebServer**: 분석 리포트 생성 시, WebServer의 gRPC 서버에 접속하여 해당 사용자의 도메인 방문 기록과 통계 데이터를 가져옵니다.
-3.  **Frontend → WebServer/Agent**: 사용자는 대시보드를 통해 실시간 통계를 확인하거나(REST), AI 분석을 직접 요청(REST)할 수 있습니다.
+## 개발 환경 설정
 
-## 🛠️ 주요 구성 요소
+### Frontend
 
-### 1. [DoH Server (C++)](./DoH/)
-**Boost.Beast**와 **Asio**를 기반으로 구현된 고성능 DNS-over-HTTPS 포워더입니다.
-- **역할**: DNS 쿼리 암호화 및 필터링, 실시간 쿼리 분석 데이터 스트리밍.
-- **기술 스택**: C++20, OpenSSL, gRPC, vcpkg.
-- **성능 목표**: 10ms 이내의 DNS 응답 지연 시간 및 10,000개 이상의 동시 연결 처리.
+#### 요구 사항
+- Node.js 20.x 이상
+- npm
+- 로컬 백엔드 서버 `http://127.0.0.1:8000`
 
-### 2. [WebServer (Java/Spring Boot)](./webserver/)
-시스템의 비즈니스 로직과 데이터 관리를 담당하는 중앙 허브입니다.
-- **역할**: DNS 분석 데이터 집계, 사용자 관리, 대시보드 API 제공, AI 에이전트를 위한 데이터 서빙.
-- **기술 스택**: Spring Boot 3.4+, WebFlux (Reactive), Spring gRPC, PostgreSQL (R2DBC), Redis.
-- **특징**: 완전 비차단(Non-blocking) 아키텍처를 통한 높은 확장성 확보.
-
-### 3. [AI Agent (Python)](./Agent/)
-LLM(대형 언어 모델)을 활용하여 지능적인 분석과 제안을 수행하는 엔진입니다.
-- **역할**: 도메인 사용 패턴 분석(생산성 vs 중독성 분류), 맞춤형 디지털 해독 리포트 생성.
-- **기술 스택**: Python 3.13, FastAPI, PydanticAI, gRPC.
-- **AI 모델**: PydanticAI 프레임워크를 통해 타입 안전한 LLM 인터랙션을 보장합니다.
-
-### 4. [Frontend (React/Vite)](./frontend/)
-웹 대시보드 및 API 연동 확인을 위한 프론트엔드 개발 서버입니다.
-- **역할**: 사용자 통계 조회 UI, 백엔드 REST API 연동, 개발용 대시보드.
-- **기술 스택**: React 19, Vite 7.
-- **연동 방식**: `/api` 경로를 `WebServer(8080)`로 프록시.
-
-## 🚀 빠른 시작 가이드
-
-### 필수 요구 사항
-- Docker 및 Docker Compose
-- Java 21 / Python 3.13 / C++ 컴파일러 (로컬 빌드 시)
-
-### Docker Compose를 이용한 일괄 실행
+#### 설치 및 실행
 ```bash
-# 저장소 클론
-git clone https://github.com/org/detox-agent-backend.git
-cd detox-agent-backend
-
-# 환경 변수 파일 준비
-cp .env.example .env
-# 필요 시 .env 값 수정 (예: OPENAI_API_KEY)
-
-# 전체 서비스 빌드 + 실행
-docker compose up -d --build
+npm ci
+npm run dev
 ```
 
-- Frontend: `http://localhost:3000`
-- WebServer API: `http://localhost:8080`
-- Agent API: `http://localhost:8000`
+#### 스크립트
+```bash
+npm run dev
+npm run build
+npm run start
+npm run lint
+npm test
+```
 
-중지:
+### Backend
+
+#### 가상환경 생성
+
+macOS / Linux / WSL 기준:
 
 ```bash
-docker compose down
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-### Kubernetes 실행
-
+#### 의존성 설치 및 실행
 ```bash
-# 이미지 빌드
-docker build -t detox/webserver:latest ./webserver
-docker build -t detox/agent:latest ./Agent
-docker build -t detox/frontend:latest ./frontend
-
-# 매니페스트 적용
-kubectl apply -k deploy/k8s
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
 
-- Frontend(NodePort): `http://<NODE_IP>:30080`
-- 상세 가이드: `deploy/README.md`
+- API: `http://localhost:8000`
+- Swagger: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-### 서비스별 개별 실행 (개발용)
-- **AI 에이전트**: `cd Agent && uv run src/api/main_api.py`
-- **웹 서버**: `cd webserver && ./gradlew bootRun`
-- **DoH 서버**: `cd DoH && cmake --build build && ./build/doh_server`
-- **프론트엔드**: `cd frontend && npm install && npm run dev`
+## 기술 스택
 
-## 📊 모니터링 및 운영
-- **메트릭**: Prometheus를 통해 각 서비스의 상태를 수집합니다.
-- **시각화**: Grafana 대시보드에서 DNS 지연 시간, 시스템 리소스, 사용자 활동량을 모니터링합니다.
-- **로그**: ELK 또는 Loki를 통해 로그를 중앙 집중화하여 관리합니다.
+### Frontend
+- Next.js
+- TypeScript
+- React
+- Tailwind CSS
+- Zustand
+- Axios
+- TanStack Query
+- Vitest
 
-## 🤝 기여 방법
-이 프로젝트에 기여하고 싶으시다면 [CONTRIBUTING.md](CONTRIBUTING.md)를 확인해 주세요. 모든 풀 리퀘스트를 환영합니다!
+### Backend
+- FastAPI
+- Python
+- Pydantic
+- Uvicorn
+- SQLite
+- pysam
 
-## 📜 라이선스
-이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+### Quality & Collaboration
+- Ruff
+- Pyright
+- pytest
+- commitlint
+- Husky
+
+## 주간 진행 상황
+
+### Week 6 (26.1.26 - 2.1)
+#### Frontend
+- 대용량 시퀀스 렌더링 성능 최적화
+- Binary Search 기반 뷰포트 탐색으로 고BP 구간 렌더링 부담 완화
+- Canvas 배경 jittering 현상 수정
+
+### Week 7 (26.2.2 - 2.8)
+#### Frontend
+- Step 1 입력 정규화 및 검증 UX 개선
+- 붙여넣기/업로드 시 비정상 문자 처리 흐름 정리
+- 대문자 ATGC 변환 및 sanitize 로직 고도화
+
+### Week 8 (26.2.9 - 2.15)
+#### Frontend
+- Mock 응답 제거 후 실서버 응답 구조로 전환
+- API 오류 메시지 및 상태 처리 보강
+- UI 리뉴얼 및 테스트 기반 정비
+
+#### Backend
+- `app/` 기준으로 구조 정리
+- CI 파이프라인 및 Ruff / Pyright 설정 추가
+- `/health` 엔드포인트 테스트 추가
+
+### Week 9 (26.2.16 - 2.22)
+#### Frontend
+- 의존성 보안 업데이트 및 취약점 대응
+- Lint / Test / Build 기준 회귀 점검
+
+#### Backend
+- 원천 데이터 기반 `annotations.db` 구축 스크립트 추가
+- DB 점검 및 통합 확인 스크립트 정리
+- 데이터베이스 문서 보강
+
+### Week 10 (26.2.23 - 3.1)
+#### Frontend
+- Step 3 제한효소 입력 이슈 수정
+- 결과 표시를 모달에서 새 탭 방식으로 전환
+- `amplicon` 용어를 `template`로 통일
+
+#### Backend
+- `health/db` 엔드포인트 추가
+- 루트(`/`) 응답에 문서 및 헬스 체크 링크 제공
+
+## Repobeats
+
+### Frontend
+(3.1 ~ 3.10 기간의 대시보드)
+
+![Alt](https://repobeats.axiom.co/api/embed/d2f58146b1988f61e92f8b0545847f2f910bbb6d.svg "Repobeats analytics image")
+
+### Backend
+(3.1 ~ 3.10 기간의 대시보드)
+
+![Alt](https://repobeats.axiom.co/api/embed/92bffc301187377261452dfd66e7fe73bbb2c8e3.svg "Repobeats analytics image")
