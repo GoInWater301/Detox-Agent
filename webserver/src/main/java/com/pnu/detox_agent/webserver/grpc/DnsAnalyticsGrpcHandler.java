@@ -41,7 +41,11 @@ public class DnsAnalyticsGrpcHandler extends AnalyticsServiceGrpc.AnalyticsServi
                             .setTimestampUs(timestamp)
                             .build();
                     usageTrackingService.trackUsage(normalized).block();
-                    accepted.incrementAndGet();
+                    long n = accepted.incrementAndGet();
+                    if (n == 1 || n % 100 == 0) {
+                        log.info("DNS analytics received: user={}, domain={}, latency_us={}, total_accepted={}",
+                                event.getUserId(), event.getQueriedDomain(), event.getLatencyUs(), n);
+                    }
                 } catch (Exception ex) {
                     rejected.incrementAndGet();
                     log.warn("Failed to track DNS usage: user={}, domain={}", event.getUserId(), event.getQueriedDomain(), ex);
@@ -55,12 +59,10 @@ public class DnsAnalyticsGrpcHandler extends AnalyticsServiceGrpc.AnalyticsServi
 
             @Override
             public void onCompleted() {
+                log.info("DNS stream completed — accepted={}, rejected={}", accepted.get(), rejected.get());
                 responseObserver.onNext(Ack.newBuilder()
                         .setAcceptedCount(accepted.get())
                         .build());
-                if (rejected.get() > 0) {
-                    log.info("DNS stream completed with rejected events: {}", rejected.get());
-                }
                 responseObserver.onCompleted();
             }
         };

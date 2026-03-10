@@ -3,6 +3,9 @@
 #include "dns/tcp_upstream.hpp"
 #include "util/dns_wire.hpp"
 
+#include <boost/asio/error.hpp>
+#include <spdlog/spdlog.h>
+
 namespace doh::dns {
 
 DnsForwarder::DnsForwarder(std::string host, uint16_t port, uint32_t timeout_ms)
@@ -13,7 +16,7 @@ DnsForwarder::DnsForwarder(std::string host, uint16_t port, uint32_t timeout_ms)
 
 void DnsForwarder::async_forward(boost::asio::any_io_executor ex,
                                   std::vector<uint8_t>         query,
-                                  QueryCallback                cb) {
+                                  ForwardCallback              cb) {
     auto udp = std::make_shared<UdpUpstream>(ex, upstream_host_, upstream_port_, timeout_ms_);
 
     // Keep a copy of the query for the potential TCP retry
@@ -26,12 +29,26 @@ void DnsForwarder::async_forward(boost::asio::any_io_executor ex,
          cb      = std::move(cb)]
         (boost::system::error_code ec, std::vector<uint8_t> response) mutable
         {
-            if (!ec && doh::util::is_dns_truncated(response)) {
-                // TC=1: the upstream truncated its UDP reply — retry over TCP
+            const bool retry_tcp =
+                (!ec && doh::util::is_dns_truncated(response)) ||
+                (ec == boost::asio::error::timed_out);
+
+            if (retry_tcp) {
+                if (ec == boost::asio::error::timed_out) {
+                    spdlog::debug("UDP upstream timed out for {}:{}; retrying over TCP",
+                                  host, port);
+                }
+
+                // TC=1 or UDP timeout: retry over TCP
                 auto tcp_up = std::make_shared<TcpUpstream>(ex, host, port, tms);
-                tcp_up->async_query(std::move(query), std::move(cb));
+                tcp_up->async_query(
+                    std::move(query),
+                    [cb = std::move(cb)](boost::system::error_code tcp_ec,
+                                         std::vector<uint8_t> tcp_response) mutable {
+                        cb(tcp_ec, std::move(tcp_response), true);
+                    });
             } else {
-                cb(ec, std::move(response));
+                cb(ec, std::move(response), false);
             }
         });
 }

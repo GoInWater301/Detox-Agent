@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detox Agent - 차단 목록</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+<main class="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <p class="text-xs uppercase tracking-[0.24em] text-slate-600">Blocklist</p>
+            <h1 class="text-2xl font-semibold text-slate-100 mt-1">차단 도메인 관리</h1>
+            <p class="text-sm text-slate-500 mt-2">현재 사용자에게 적용되는 DNS 차단 도메인을 추가하고 해제할 수 있습니다.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="/dashboard" class="px-3 py-2 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-900 transition">대시보드</a>
+            <a href="/review" class="px-3 py-2 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-900 transition">AI Review</a>
+            <button type="button" onclick="logout()" class="px-3 py-2 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-900 transition">로그아웃</button>
+        </div>
+    </header>
+
+    <section class="grid lg:grid-cols-[1fr_1.4fr] gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div>
+                <h2 class="text-sm font-medium text-slate-200">도메인 추가</h2>
+                <p class="text-xs text-slate-500 mt-1">예: `youtube.com`, `googlevideo.com`</p>
+            </div>
+            <div class="space-y-3">
+                <input id="manual-domain"
+                       type="text"
+                       placeholder="example.com"
+                       class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-500">
+                <button type="button"
+                        onclick="blockManualDomain()"
+                        class="w-full px-3 py-2.5 rounded bg-slate-200 text-slate-950 text-sm font-medium hover:bg-white transition">
+                    차단 추가
+                </button>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+                <p class="text-xs text-slate-500">차단 수</p>
+                <p id="blocked-count" class="text-2xl font-semibold mt-2">0</p>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+                <p class="text-xs text-slate-500">적용 방식</p>
+                <p class="text-sm text-slate-300 mt-2 leading-6">차단 도메인은 Redis `doh:block:{token}` 세트에 저장되고 DoH 필터에서 즉시 참조됩니다.</p>
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-sm font-medium text-slate-200">현재 차단 목록</h2>
+                    <p class="text-xs text-slate-500 mt-1">도메인 단위로 차단하며, 필요시 바로 해제할 수 있습니다.</p>
+                </div>
+                <button type="button" onclick="loadBlockedDomains()" class="text-xs text-slate-400 hover:text-slate-200 transition">새로고침</button>
+            </div>
+            <div id="blocklist-empty" class="hidden text-sm text-slate-600 text-center py-16">
+                차단된 도메인이 없습니다
+            </div>
+            <div id="blocked-domains" class="mt-4 space-y-2"></div>
+        </div>
+    </section>
+</main>
+
+<div id="toast" class="fixed bottom-4 right-4 bg-slate-800 border border-slate-700 text-xs text-slate-300 px-3 py-2 rounded shadow-xl opacity-0 pointer-events-none transition-all duration-200 z-50"></div>
+
+<script>
+    const token = localStorage.getItem('detox_token');
+    if (!token) window.location.replace('/login');
+
+    let blockedDomains = [];
+    let pendingDomains = new Set();
+
+    loadBlockedDomains();
+
+    async function apiFetch(path, opts = {}) {
+        const res = await fetch(path, {
+            ...opts,
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                ...(opts.headers || {})
+            }
+        });
+        if (res.status === 401) {
+            logout();
+            throw new Error('세션이 만료되었습니다');
+        }
+        return res;
+    }
+
+    async function loadBlockedDomains() {
+        try {
+            const res = await apiFetch('/api/blocklist');
+            if (!res.ok) throw new Error('차단 목록을 불러오지 못했습니다');
+            blockedDomains = await res.json();
+            renderBlockedDomains();
+        } catch (error) {
+            showToast(error.message || '차단 목록을 불러오지 못했습니다');
+        }
+    }
+
+    function renderBlockedDomains() {
+        const list = document.getElementById('blocked-domains');
+        const empty = document.getElementById('blocklist-empty');
+        document.getElementById('blocked-count').textContent = String(blockedDomains.length);
+        if (!blockedDomains.length) {
+            list.innerHTML = '';
+            empty.classList.remove('hidden');
+            return;
+        }
+        empty.classList.add('hidden');
+        list.innerHTML = blockedDomains.map(domain => `
+            <div class="flex items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-lg px-4 py-3">
+                <div class="min-w-0">
+                    <p class="text-sm text-slate-200 truncate">${escHtml(domain)}</p>
+                </div>
+                <button type="button"
+                        onclick="unblockDomain('${escJs(domain)}')"
+                        ${pendingDomains.has(domain) ? 'disabled' : ''}
+                        class="shrink-0 px-3 py-1.5 rounded border border-red-800/60 text-xs text-red-300 bg-red-950/30 hover:bg-red-950/45 transition ${pendingDomains.has(domain) ? 'opacity-50 cursor-not-allowed' : ''}">
+                    ${pendingDomains.has(domain) ? '처리중' : '차단 해제'}
+                </button>
+            </div>
+        `).join('');
+    }
+
+    async function blockManualDomain() {
+        const input = document.getElementById('manual-domain');
+        const domain = input.value.trim().toLowerCase().replace(/\.+$/, '');
+        if (!domain) {
+            showToast('도메인을 입력하세요');
+            return;
+        }
+        await updateBlockState(domain, 'POST');
+        input.value = '';
+    }
+
+    async function unblockDomain(domain) {
+        await updateBlockState(domain, 'DELETE');
+    }
+
+    async function updateBlockState(domain, method) {
+        pendingDomains.add(domain);
+        renderBlockedDomains();
+        try {
+            const path = method === 'POST' ? '/api/blocklist' : `/api/blocklist/${encodeURIComponent(domain)}`;
+            const options = method === 'POST'
+                ? { method, body: JSON.stringify({ domain }) }
+                : { method };
+            const res = await apiFetch(path, options);
+            if (!res.ok) throw new Error('차단 목록 갱신에 실패했습니다');
+            if (method === 'POST') {
+                if (!blockedDomains.includes(domain)) blockedDomains.push(domain);
+                blockedDomains.sort((a, b) => a.localeCompare(b));
+                showToast(`${domain} 차단됨`);
+            } else {
+                blockedDomains = blockedDomains.filter(item => item !== domain);
+                showToast(`${domain} 차단 해제됨`);
+            }
+        } catch (error) {
+            showToast(error.message || '차단 목록 갱신에 실패했습니다');
+        } finally {
+            pendingDomains.delete(domain);
+            renderBlockedDomains();
+        }
+    }
+
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escJs(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+    function logout() { localStorage.removeItem('detox_token'); window.location.replace('/login'); }
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.replace('opacity-0', 'opacity-100');
+        setTimeout(() => t.classList.replace('opacity-100', 'opacity-0'), 2000);
+    }
+</script>
+</body>
+</html>

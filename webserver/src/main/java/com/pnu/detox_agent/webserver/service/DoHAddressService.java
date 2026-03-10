@@ -54,6 +54,7 @@ public class DoHAddressService {
     /**
      * 사용자의 개인 DoH URL 반환
      * 형식: {endpoint.baseUrl}/{doh_token}/dns-query
+     * 예시: https://doh.leeswallow.click/{doh_token}/dns-query
      */
     public Mono<String> getDoHUrl(UserEntity user) {
         if (user.getDohToken() == null) {

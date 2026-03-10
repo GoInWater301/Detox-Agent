@@ -3,9 +3,10 @@ package com.pnu.detox_agent.webserver.service;
 import com.pnu.detox_agent.webserver.dto.DomainUsageDto;
 import com.pnu.detox_agent.webserver.dto.TimelineStatsDto;
 import com.pnu.detox_agent.webserver.dto.UsageStatsDto;
-import java.time.Instant;
+import com.pnu.detox_agent.webserver.repository.UserRepository;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
 import java.util.Comparator;
@@ -21,62 +22,83 @@ import reactor.core.publisher.Mono;
 public class DashboardService {
 
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final ZoneId ANALYTICS_ZONE = ZoneId.of("Asia/Seoul");
 
     private final ReactiveStringRedisTemplate redisTemplate;
+    private final UserRepository userRepository;
 
-    public DashboardService(ReactiveStringRedisTemplate redisTemplate) {
+    public DashboardService(ReactiveStringRedisTemplate redisTemplate, UserRepository userRepository) {
         this.redisTemplate = redisTemplate;
+        this.userRepository = userRepository;
     }
 
     public Mono<UsageStatsDto> getUserUsageStats(String userId, String period) {
-        Flux<DomainUsageDto> domains = getUserDomainUsage(userId, null, null);
+        String normalizedPeriod = normalizePeriod(period);
+        DateRange range = currentRange(normalizedPeriod);
+        return resolveAnalyticsUserId(userId)
+                .flatMap(resolvedUserId -> {
+                    Flux<DomainUsageDto> domains = getUserDomainUsageInternal(
+                            resolvedUserId,
+                            range.start().toString(),
+                            range.end().toString());
+                    Mono<Long> totalQueries = currentTotalQueries(resolvedUserId, normalizedPeriod);
 
-        Mono<Long> totalQueries = currentTotalQueries(userId, normalizePeriod(period));
-
-        return domains.collectList().zipWith(totalQueries)
-                .map(tuple -> {
-                    List<DomainUsageDto> sorted = tuple.getT1().stream()
-                            .sorted(Comparator.comparingLong(DomainUsageDto::requestCount).reversed())
-                            .toList();
-                    long fallbackTotal = sorted.stream().mapToLong(DomainUsageDto::requestCount).sum();
-                    long total = tuple.getT2() > 0 ? tuple.getT2() : fallbackTotal;
-                    return new UsageStatsDto(
-                            userId,
-                            normalizePeriod(period),
-                            total,
-                            sorted.size(),
-                            sorted.stream().limit(10).toList());
+                    return domains.collectList().zipWith(totalQueries)
+                            .map(tuple -> {
+                                List<DomainUsageDto> sorted = tuple.getT1().stream()
+                                        .sorted(Comparator.comparingLong(DomainUsageDto::requestCount).reversed())
+                                        .toList();
+                                long fallbackTotal = sorted.stream().mapToLong(DomainUsageDto::requestCount).sum();
+                                long total = tuple.getT2() > 0 ? tuple.getT2() : fallbackTotal;
+                                return new UsageStatsDto(
+                                        userId,
+                                        normalizedPeriod,
+                                        total,
+                                        sorted.size(),
+                                        sorted.stream().limit(10).toList());
+                            });
                 });
     }
 
     public Flux<DomainUsageDto> getUserDomainUsage(String userId, String startDate, String endDate) {
-        LocalDate start = parseDate(startDate, LocalDate.MIN);
-        LocalDate end = parseDate(endDate, LocalDate.MAX);
+        return resolveAnalyticsUserId(userId)
+                .flatMapMany(resolvedUserId -> getUserDomainUsageInternal(resolvedUserId, startDate, endDate));
+    }
 
-        return redisTemplate.opsForSet().members(UsageTrackingService.userDomainsKey(userId))
-                .flatMap(domain -> redisTemplate.<String, String>opsForHash()
-                        .entries(UsageTrackingService.usageKey(userId, domain))
-                        .collectMap(Map.Entry::getKey, Map.Entry::getValue)
-                        .filter(values -> !values.isEmpty())
-                        .map(values -> toDomainUsageDto(domain, values))
-                        .filter(dto -> inRange(dto, start, end)));
+    private Flux<DomainUsageDto> getUserDomainUsageInternal(String analyticsUserId, String startDate, String endDate) {
+        LocalDate start = parseDate(startDate, LocalDate.now(ANALYTICS_ZONE));
+        LocalDate end = parseDate(endDate, LocalDate.now(ANALYTICS_ZONE));
+
+        List<LocalDate> dates = start.datesUntil(end.plusDays(1)).toList();
+        return Flux.fromIterable(dates)
+                .flatMap(date -> {
+                    String dateStr = date.toString();
+                    String indexKey = UsageTrackingService.userDomainsKey(analyticsUserId, dateStr);
+                    return redisTemplate.opsForSet().members(indexKey)
+                            .flatMap(domain -> loadDomainUsageForDate(analyticsUserId, domain, dateStr));
+                })
+                .groupBy(DomainUsageDto::domain)
+                .flatMap(group -> group.reduce(this::mergeDomainUsage));
     }
 
     public Flux<TimelineStatsDto> getUserTimeline(String userId, String period) {
         String normalizedPeriod = normalizePeriod(period);
-        String pattern = UsageTrackingService.statsKey(normalizedPeriod, userId, "*");
+        return resolveAnalyticsUserId(userId)
+                .flatMapMany(resolvedUserId -> {
+                    String pattern = UsageTrackingService.statsKey(normalizedPeriod, resolvedUserId, "*");
 
-        return redisTemplate.keys(pattern)
-                .flatMap(key -> redisTemplate.<String, String>opsForHash()
-                        .entries(key)
-                        .collectMap(Map.Entry::getKey, Map.Entry::getValue)
-                        .map(map -> {
-                            long total = parseLong(map.get("totalQueries"), 0L);
-                            long unique = map.keySet().stream().filter(k -> k.startsWith("domain:")).count();
-                            String bucket = key.substring(key.lastIndexOf(':') + 1);
-                            return new TimelineStatsDto(bucket, total, unique);
-                        }))
-                .sort(Comparator.comparing(TimelineStatsDto::bucket));
+                    return redisTemplate.keys(pattern)
+                            .flatMap(key -> redisTemplate.<String, String>opsForHash()
+                                    .entries(key)
+                                    .collectMap(Map.Entry::getKey, Map.Entry::getValue)
+                                    .map(map -> {
+                                        long total = parseLong(map.get("totalQueries"), 0L);
+                                        long unique = map.keySet().stream().filter(k -> k.startsWith("domain:")).count();
+                                        String bucket = key.substring(key.lastIndexOf(':') + 1);
+                                        return new TimelineStatsDto(bucket, total, unique);
+                                    }))
+                            .sort(Comparator.comparing(TimelineStatsDto::bucket));
+                });
     }
 
     private Mono<Long> currentTotalQueries(String userId, String period) {
@@ -86,7 +108,7 @@ public class DashboardService {
     }
 
     private String currentBucket(String period) {
-        LocalDate now = LocalDate.now(ZoneOffset.UTC);
+        LocalDate now = LocalDate.now(ANALYTICS_ZONE);
         return switch (period) {
             case "weekly" -> {
                 WeekFields weekFields = WeekFields.of(Locale.ROOT);
@@ -96,6 +118,21 @@ public class DashboardService {
             }
             case "monthly" -> now.format(MONTH_FORMAT);
             default -> now.toString();
+        };
+    }
+
+    private DateRange currentRange(String period) {
+        LocalDate now = LocalDate.now(ANALYTICS_ZONE);
+        return switch (period) {
+            case "weekly" -> {
+                WeekFields weekFields = WeekFields.of(Locale.ROOT);
+                LocalDate start = now.with(weekFields.dayOfWeek(), 1);
+                yield new DateRange(start, start.plusDays(6));
+            }
+            case "monthly" -> new DateRange(
+                    now.with(TemporalAdjusters.firstDayOfMonth()),
+                    now.with(TemporalAdjusters.lastDayOfMonth()));
+            default -> new DateRange(now, now);
         };
     }
 
@@ -109,12 +146,33 @@ public class DashboardService {
                 parseLong(values.get("avgResponseTimeMs"), 0L));
     }
 
-    private boolean inRange(DomainUsageDto dto, LocalDate start, LocalDate end) {
-        if (dto.lastAccess() <= 0) {
-            return true;
-        }
-        LocalDate accessDate = Instant.ofEpochMilli(dto.lastAccess() / 1000L).atZone(ZoneOffset.UTC).toLocalDate();
-        return !accessDate.isBefore(start) && !accessDate.isAfter(end);
+    private DomainUsageDto mergeDomainUsage(DomainUsageDto a, DomainUsageDto b) {
+        long count = a.requestCount() + b.requestCount();
+        long firstAccess = (a.firstAccess() > 0 && b.firstAccess() > 0)
+                ? Math.min(a.firstAccess(), b.firstAccess())
+                : Math.max(a.firstAccess(), b.firstAccess());
+        long lastAccess = Math.max(a.lastAccess(), b.lastAccess());
+        long totalDuration = a.totalDuration() + b.totalDuration();
+        long avgResponse = count == 0 ? 0 : (a.averageResponseTimeMs() * a.requestCount()
+                + b.averageResponseTimeMs() * b.requestCount()) / count;
+        return new DomainUsageDto(a.domain(), count, firstAccess, lastAccess, totalDuration, avgResponse);
+    }
+
+    private Mono<DomainUsageDto> loadDomainUsageForDate(String analyticsUserId, String domain, String dateStr) {
+        String usageKey = UsageTrackingService.usageKey(analyticsUserId, domain, dateStr);
+        return redisTemplate.<String, String>opsForHash()
+                .entries(usageKey)
+                .collectMap(Map.Entry::getKey, Map.Entry::getValue)
+                .flatMap(values -> {
+                    if (!values.isEmpty()) {
+                        return Mono.just(toDomainUsageDto(domain, values));
+                    }
+                    return redisTemplate.<String, String>opsForHash()
+                            .get(UsageTrackingService.statsKey("daily", analyticsUserId, dateStr), "domain:" + domain)
+                            .map(count -> new DomainUsageDto(domain, parseLong(count, 0L), 0L, 0L, 0L, 0L))
+                            .defaultIfEmpty(new DomainUsageDto(domain, 0L, 0L, 0L, 0L, 0L));
+                })
+                .filter(dto -> dto.requestCount() > 0);
     }
 
     private LocalDate parseDate(String raw, LocalDate fallback) {
@@ -148,5 +206,15 @@ public class DashboardService {
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private Mono<String> resolveAnalyticsUserId(String userId) {
+        return userRepository.findByUsername(userId)
+                .mapNotNull(user -> user.getDohToken())
+                .filter(token -> !token.isBlank())
+                .switchIfEmpty(Mono.just(userId));
+    }
+
+    private record DateRange(LocalDate start, LocalDate end) {
     }
 }

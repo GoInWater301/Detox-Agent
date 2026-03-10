@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.pnu.detox_agent.webserver.grpc";
+option java_outer_classname = "AiAgentReviewProto";
+
+package ai.agent.v1;
+
+message DomainUsage {
+  string domain = 1;
+  int64 request_count = 2;
+  int64 first_access = 3;
+  int64 last_access = 4;
+  int64 total_duration = 5;
+  int64 average_response_time_ms = 6;
+}
+
+message UsageDto {
+  string user_id = 1;
+  string period = 2;
+  int64 total_queries = 3;
+  int64 unique_domains = 4;
+  repeated DomainUsage top_domains = 5;
+}
+
+message ReviewRequest {
+  string session_id = 1;
+  string prompt = 2;
+  UsageDto usage = 3;
+}
+
+message ReviewToken {
+  string token = 1;
+  bool done = 2;
+  string model = 3;
+  string message_id = 4;
+}
+
+message BlockingRecommendation {
+  string domain = 1;
+  string reason = 2;
+  int64 recommended_limit_minutes = 3;
+}
+
+message AnalysisResponse {
+  bool is_addicted = 1;
+  string risk_level = 2;
+  string summary = 3;
+  string recommendation = 4;
+  repeated string addictive_domains = 5;
+  repeated BlockingRecommendation blocking_recommendations = 6;
+}
+
+service AiAgentReviewService {
+  rpc StreamReview(ReviewRequest) returns (stream ReviewToken);
+  rpc AnalyzeUsage(ReviewRequest) returns (AnalysisResponse);
+}

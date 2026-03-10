@@ -31,10 +31,10 @@ add_custom_command(
         "${PROTO_GEN_DIR}/analytics.grpc.pb.cc"
         "${PROTO_GEN_DIR}/analytics.grpc.pb.h"
     COMMAND protobuf::protoc
-        --proto_path="${PROTO_SRC_DIR}"
-        --cpp_out="${PROTO_GEN_DIR}"
-        --grpc_out="${PROTO_GEN_DIR}"
-        "--plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN_EXE}"
+        --proto_path=${PROTO_SRC_DIR}
+        --cpp_out=${PROTO_GEN_DIR}
+        --grpc_out=${PROTO_GEN_DIR}
+        --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN_EXE}
         "${PROTO_SRC_DIR}/analytics.proto"
     DEPENDS "${PROTO_SRC_DIR}/analytics.proto"
     VERBATIM

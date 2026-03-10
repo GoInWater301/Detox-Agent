@@ -186,7 +186,7 @@ public:
 
     void async_forward(any_io_executor ex,
                        std::vector<uint8_t> query,
-                       QueryCallback cb);
+                       ForwardCallback cb);
 };
 ```
 
@@ -197,6 +197,7 @@ async_forward()
   └─ UdpUpstream::async_query(query)
        ├─ 성공 + TC=0: cb(ok, response)           ← 일반 경로
        ├─ 성공 + TC=1: TcpUpstream::async_query()  ← 자동 fallback
+       ├─ 실패 + timeout: TcpUpstream::async_query() ← 자동 fallback
        │                 └─ cb(ok, full_response)
        └─ 실패:         cb(error, {})
 ```

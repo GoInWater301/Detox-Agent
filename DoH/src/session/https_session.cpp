@@ -166,6 +166,8 @@ void HttpsSession::do_forward(std::string  user_id,
                                std::chrono::steady_clock::time_point t0,
                                int64_t ts_us)
 {
+    auto self = shared_from_this();
+
     forwarder_.async_forward(
         stream_.get_executor(),
         payload,  // copy for analytics; moved into lambda
@@ -174,7 +176,7 @@ void HttpsSession::do_forward(std::string  user_id,
          queried_domain = std::move(queried_domain),
          raw_query      = payload,
          t0, ts_us]
-        (beast::error_code ec, std::vector<uint8_t> dns_response) mutable
+        (beast::error_code ec, std::vector<uint8_t> dns_response, bool used_tcp) mutable
         {
             if (ec) {
                 spdlog::warn("DNS forward error [{}]: {}", self->client_ip_, ec.message());
@@ -203,7 +205,7 @@ void HttpsSession::do_forward(std::string  user_id,
                     .raw_response   = dns_response,
                     .timestamp_us   = ts_us,
                     .latency_us     = latency_us,
-                    .used_tcp       = false,
+                    .used_tcp       = used_tcp,
                 });
             }
 

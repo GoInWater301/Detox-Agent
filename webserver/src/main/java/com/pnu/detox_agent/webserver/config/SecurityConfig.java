@@ -33,6 +33,8 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/webjars/**"
                         ).permitAll()
+                        .pathMatchers("/", "/login", "/register", "/dashboard", "/review", "/blocklist",
+                                "/static/**", "/favicon.ico").permitAll()
                         .anyExchange().authenticated()
                 )
                 .addFilterAt(jwtAuthFilter, SecurityWebFiltersOrder.AUTHENTICATION)

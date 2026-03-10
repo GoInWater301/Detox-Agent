@@ -1,115 +1,191 @@
-# 🚀 Detox-Agent Backend: 디지털 중독 방지 시스템
+# DetoxAgent
 
-디지털 중독 문제를 해결하기 위해 네트워크 수준의 DNS 필터링과 AI 기반의 사용 패턴 분석을 결합한 고성능 백엔드 생태계입니다.
+> DNS filtering, usage analytics, and AI-assisted digital habit review
 
-## 🎯 프로젝트 개요
+DetoxAgent는 개인 전용 DoH(DNS-over-HTTPS) 엔드포인트를 통해 DNS 요청을 수집하고, 사용자별 사용 패턴을 집계한 뒤 대시보드와 AI 리뷰로 보여주는 프로젝트입니다.
 
-Detox-Agent는 사용자가 자신의 디지털 습관을 인지하고 제어할 수 있도록 돕습니다. 네트워크 레벨에서 DNS 쿼리를 가로채어 유해/중독성 사이트 접속을 제어하고, 수집된 데이터를 AI가 분석하여 개인 맞춤형 리포트와 가이드를 제공합니다.
+현재 저장소에는 다음 구성이 포함되어 있습니다.
+- `DoH`: C++ 기반 DoH forwarder
+- `webserver`: Spring WebFlux 기반 인증, 집계, 대시보드 API
+- `Agent`: Python 기반 AI 리뷰 서비스
+- `frontend`: React/Vite 기반 대시보드 UI
 
-## 🏗️ 전체 시스템 아키텍처
+## 프로젝트 목표
 
-본 시스템은 마이크로서비스 아키텍처(MSA)를 따르며, 성능 최적화를 위해 gRPC를 주요 통신 프로토콜로 사용합니다.
+- 사용자별 DoH 엔드포인트 발급
+- DNS 이벤트 실시간 수집 및 저장
+- 기간별 사용량 집계와 도메인 분석
+- 차단 목록 관리
+- AI 기반 사용 패턴 리뷰 스트리밍
+
+## 현재 구현 범위
+
+### 구현됨
+- 회원가입 / 로그인 / JWT 인증
+- 사용자별 DoH URL 발급
+- DoH 요청 수신 및 upstream DNS forwarding
+- WebServer gRPC 수집기로 DNS 이벤트 적재
+- Redis + PostgreSQL 기반 사용량 집계
+- 일/주/월 사용량 조회 API
+- 차단 도메인 CRUD 및 Redis 동기화
+- React 대시보드와 AI 리뷰 스트리밍 UI
+- Docker Compose 기반 로컬 통합 실행
+
+### 미구현 또는 후속 작업
+- Prometheus / Grafana 등 모니터링 스택
+- 운영용 배포 자동화 완성
+- Nudge landing page 전체 흐름
+- 실서비스 수준의 보안/운영 하드닝
+
+## 아키텍처
 
 ```mermaid
 graph TD
-    User([사용자 기기]) -->|DoH 쿼리| A[DoH Server - C++]
-    A -->|gRPC Stream| B[WebServer - Java/Spring Boot]
-    B -->|R2DBC| DB[(PostgreSQL)]
-    B -->|Reactive| CACHE[(Redis)]
-    C[AI Agent - Python] -->|gRPC Request| B
-    B -->|REST API| D[Frontend Dashboard]
-    D -->|REST API| C[AI Agent Analysis]
+    U[User Device] -->|DoH Query| D[DoH Server]
+    D -->|gRPC Stream| W[WebServer]
+    W -->|R2DBC| P[(PostgreSQL)]
+    W -->|Reactive| R[(Redis)]
+    F[Frontend] -->|REST / SSE| W
+    W -->|gRPC| A[AI Agent]
 ```
 
-### 서비스 간 통신 매커니즘
-1.  **DoH Server → WebServer**: DNS 쿼리 발생 시 실시간으로 gRPC 클라이언트 스트리밍을 통해 분석 데이터를 전송합니다.
-2.  **AI Agent → WebServer**: 분석 리포트 생성 시, WebServer의 gRPC 서버에 접속하여 해당 사용자의 도메인 방문 기록과 통계 데이터를 가져옵니다.
-3.  **Frontend → WebServer/Agent**: 사용자는 대시보드를 통해 실시간 통계를 확인하거나(REST), AI 분석을 직접 요청(REST)할 수 있습니다.
+## 서비스 구성
 
-## 🛠️ 주요 구성 요소
+### DoH
+- 경로 기반 사용자 식별: `/{dohToken}/dns-query`
+- UDP 우선 조회 후 truncation 또는 timeout 시 TCP fallback
+- 허용된 DNS 이벤트를 WebServer로 gRPC 스트리밍
+- Redis 차단 목록 기반 필터링
 
-### 1. [DoH Server (C++)](./DoH/)
-**Boost.Beast**와 **Asio**를 기반으로 구현된 고성능 DNS-over-HTTPS 포워더입니다.
-- **역할**: DNS 쿼리 암호화 및 필터링, 실시간 쿼리 분석 데이터 스트리밍.
-- **기술 스택**: C++20, OpenSSL, gRPC, vcpkg.
-- **성능 목표**: 10ms 이내의 DNS 응답 지연 시간 및 10,000개 이상의 동시 연결 처리.
+상세 문서: [DoH/README.md](/home/min/Workspace/Portfolio/Detox-Agent/DoH/README.md)
 
-### 2. [WebServer (Java/Spring Boot)](./webserver/)
-시스템의 비즈니스 로직과 데이터 관리를 담당하는 중앙 허브입니다.
-- **역할**: DNS 분석 데이터 집계, 사용자 관리, 대시보드 API 제공, AI 에이전트를 위한 데이터 서빙.
-- **기술 스택**: Spring Boot 3.4+, WebFlux (Reactive), Spring gRPC, PostgreSQL (R2DBC), Redis.
-- **특징**: 완전 비차단(Non-blocking) 아키텍처를 통한 높은 확장성 확보.
+### WebServer
+- Spring WebFlux 기반 REST/gRPC 서버
+- 인증, 대시보드 API, 집계, 차단 목록 관리 담당
+- Redis 실시간 상태와 PostgreSQL 영속 데이터를 함께 사용
+- AI 리뷰 요청을 Agent와 연결
 
-### 3. [AI Agent (Python)](./Agent/)
-LLM(대형 언어 모델)을 활용하여 지능적인 분석과 제안을 수행하는 엔진입니다.
-- **역할**: 도메인 사용 패턴 분석(생산성 vs 중독성 분류), 맞춤형 디지털 해독 리포트 생성.
-- **기술 스택**: Python 3.13, FastAPI, PydanticAI, gRPC.
-- **AI 모델**: PydanticAI 프레임워크를 통해 타입 안전한 LLM 인터랙션을 보장합니다.
+관련 문서: [docs/OVERVIEW.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/OVERVIEW.md)
 
-### 4. [Frontend (React/Vite)](./frontend/)
-웹 대시보드 및 API 연동 확인을 위한 프론트엔드 개발 서버입니다.
-- **역할**: 사용자 통계 조회 UI, 백엔드 REST API 연동, 개발용 대시보드.
-- **기술 스택**: React 19, Vite 7.
-- **연동 방식**: `/api` 경로를 `WebServer(8080)`로 프록시.
+### Agent
+- FastAPI + gRPC 기반 AI 리뷰 서비스
+- 사용량 데이터를 바탕으로 요약, 위험 신호, 실행 조언 생성
+- OpenAI 키가 없을 때는 mock 응답으로 fallback
 
-## 🚀 빠른 시작 가이드
+상세 문서: [Agent/README.md](/home/min/Workspace/Portfolio/Detox-Agent/Agent/README.md)
 
-### 필수 요구 사항
-- Docker 및 Docker Compose
-- Java 21 / Python 3.13 / C++ 컴파일러 (로컬 빌드 시)
+### Frontend
+- React/Vite 기반 로그인, 회원가입, 대시보드 UI
+- 사용량 요약, 도메인 랭킹, 타임라인 조회
+- SSE 기반 AI 리뷰 스트리밍 표시
 
-### Docker Compose를 이용한 일괄 실행
+## 저장소 구조
+
+```text
+.
+├─ Agent/
+├─ DoH/
+├─ deploy/
+├─ docs/
+├─ frontend/
+├─ webserver/
+├─ docker-compose.yml
+└─ README.md
+```
+
+## 빠른 시작
+
+### 요구 사항
+- Docker / Docker Compose
+- 또는 Java 21, Python 3.13+, Node.js 20+, C++20 빌드 환경
+
+### Docker Compose 실행
+
 ```bash
-# 저장소 클론
-git clone https://github.com/org/detox-agent-backend.git
-cd detox-agent-backend
-
-# 환경 변수 파일 준비
-cp .env.example .env
-# 필요 시 .env 값 수정 (예: OPENAI_API_KEY)
-
-# 전체 서비스 빌드 + 실행
 docker compose up -d --build
 ```
 
+기본 포트:
 - Frontend: `http://localhost:3000`
-- WebServer API: `http://localhost:8080`
-- Agent API: `http://localhost:8000`
+- WebServer: `http://localhost:8080`
+- Agent: `http://localhost:8000`
 
-중지:
+종료:
 
 ```bash
 docker compose down
 ```
 
-### Kubernetes 실행
+## 로컬 개발 실행
+
+### WebServer
 
 ```bash
-# 이미지 빌드
-docker build -t detox/webserver:latest ./webserver
-docker build -t detox/agent:latest ./Agent
-docker build -t detox/frontend:latest ./frontend
-
-# 매니페스트 적용
-kubectl apply -k deploy/k8s
+cd webserver
+./gradlew bootRun
 ```
 
-- Frontend(NodePort): `http://<NODE_IP>:30080`
-- 상세 가이드: `deploy/README.md`
+### Agent
 
-### 서비스별 개별 실행 (개발용)
-- **AI 에이전트**: `cd Agent && uv run src/api/main_api.py`
-- **웹 서버**: `cd webserver && ./gradlew bootRun`
-- **DoH 서버**: `cd DoH && cmake --build build && ./build/doh_server`
-- **프론트엔드**: `cd frontend && npm install && npm run dev`
+```bash
+cd Agent
+uv sync
+uv run main.py
+```
 
-## 📊 모니터링 및 운영
-- **메트릭**: Prometheus를 통해 각 서비스의 상태를 수집합니다.
-- **시각화**: Grafana 대시보드에서 DNS 지연 시간, 시스템 리소스, 사용자 활동량을 모니터링합니다.
-- **로그**: ELK 또는 Loki를 통해 로그를 중앙 집중화하여 관리합니다.
+### Frontend
 
-## 🤝 기여 방법
-이 프로젝트에 기여하고 싶으시다면 [CONTRIBUTING.md](CONTRIBUTING.md)를 확인해 주세요. 모든 풀 리퀘스트를 환영합니다!
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## 📜 라이선스
-이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+### DoH
+
+환경에 따라 vcpkg / Boost 설정이 필요합니다.
+
+```bash
+cd DoH
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+cmake --build build
+```
+
+## 주요 엔드포인트
+
+### Auth
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+
+### Dashboard
+- `GET /api/dashboard/users/{userId}/usage`
+- `GET /api/dashboard/users/{userId}/domains`
+- `GET /api/dashboard/users/{userId}/timeline`
+
+### Blocklist
+- `GET /api/blocklist`
+- `POST /api/blocklist`
+- `DELETE /api/blocklist/{domain}`
+
+### AI Review
+- `POST /api/ai/review/stream`
+
+## 검증 상태
+
+최근 로컬 기준 확인된 항목:
+- `python3 -m compileall -q Agent/src Agent/main.py`
+- `./gradlew test --no-daemon`
+- `npm run build`
+
+주의 사항:
+- Frontend production bundle 크기 경고가 남아 있습니다.
+- DoH 로컬 빌드는 환경 의존성이 큽니다.
+- Python 3.13 요구사항과 로컬 인터프리터 버전은 별도 확인이 필요합니다.
+
+## 문서
+
+- [docs/OVERVIEW.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/OVERVIEW.md)
+- [docs/backend-integration.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/backend-integration.md)
+- [DoH/README.md](/home/min/Workspace/Portfolio/Detox-Agent/DoH/README.md)
+- [Agent/README.md](/home/min/Workspace/Portfolio/Detox-Agent/Agent/README.md)
+- [deploy/README.md](/home/min/Workspace/Portfolio/Detox-Agent/deploy/README.md)
