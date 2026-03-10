@@ -158,7 +158,7 @@ WebServer:
   "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
   "tokenType": "Bearer",
   "username": "user123",
-  "dohUrl": "https://doh.detox-agent.local/{dohToken}/dns-query"
+  "dohUrl": "https://doh.leeswallow.click/{dohToken}/dns-query"
 }
 ```
 
