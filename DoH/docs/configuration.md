@@ -59,7 +59,7 @@ export KEY=value        # export 접두사 지원
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `DOH_DNS_UPSTREAM` | `8.8.8.8` | DNS 업스트림 서버 IP (IPv4/IPv6, 호스트명 불가) |
+| `DOH_DNS_UPSTREAM` | `/etc/resolv.conf`의 첫 `nameserver` 또는 `8.8.8.8` | DNS 업스트림 서버 IP (IPv4/IPv6, 호스트명 불가) |
 | `DOH_DNS_PORT` | `53` | DNS 업스트림 포트 |
 | `DOH_DNS_TIMEOUT_MS` | `3000` | UDP 응답 대기 타임아웃 (밀리초). 초과 시 TCP 재시도. TCP는 `×2` 적용 |
 
@@ -77,10 +77,12 @@ export KEY=value        # export 접두사 지원
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `DOH_FILTER_ENABLED` | `false` | Redis 기반 도메인 차단 필터 활성화 |
+| `DOH_FILTER_ENABLED` | `false` | Redis 기반 도메인 차단 필터 활성화. `true/false`, `1/0`, `yes/no`, `on/off` 허용 |
 | `DOH_REDIS_HOST` | `127.0.0.1` | Redis 호스트 |
 | `DOH_REDIS_PORT` | `6379` | Redis 포트 |
 | `DOH_REDIS_PASSWORD` | `""` | Redis 비밀번호. 없으면 빈 문자열 |
+| `DOH_REDIS_REFRESH_MS` | `1000` | Redis blocklist를 메모리 캐시에 다시 동기화하는 주기 (밀리초) |
+| `DOH_FILTER_FAIL_OPEN` | `true` | Redis 장애/timeout 시 `true`면 허용, `false`면 차단 |
 | `DOH_BLOCK_RESPONSE` | `NXDOMAIN` | 차단 시 합성할 DNS 응답 코드. `NXDOMAIN` 또는 `REFUSED` |
 
 > `DOH_BLOCK_RESPONSE=REFUSED` 는 정책 차단 의미에 더 가깝습니다.
@@ -105,6 +107,12 @@ export KEY=value        # export 접두사 지원
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
 | *(없음)* | `hardware_concurrency` | 스레드 풀 크기는 자동 감지. 현재 환경변수로 오버라이드 불가 |
+
+### 로깅
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `DOH_LOG_LEVEL` | `debug` | `trace`, `debug`, `info`, `warn`, `error`, `critical`, `off` 중 하나. `warning` 도 `warn` 으로 허용 |
 
 ---
 

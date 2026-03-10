@@ -39,11 +39,17 @@ struct Config {
     std::string redis_host       = "127.0.0.1";
     uint16_t    redis_port       = 6379;
     std::string redis_password   = "";
+    uint32_t    redis_timeout_ms = 1000;
+    uint32_t    redis_refresh_ms = 1000;
+    bool        filter_fail_open = true;
     BlockResponsePolicy block_response_policy = BlockResponsePolicy::nxdomain;
 
     // Analytics gRPC (fire-and-forget)
     std::string analytics_endpoint  = "localhost:50051";
     std::size_t analytics_queue_cap = 4096;  // max buffered events before drop
+
+    // Logging
+    std::string log_level = "debug";
 
     [[nodiscard]] static Config from_env();
 };

@@ -137,7 +137,29 @@ fi
 start_service "webserver" "${ROOT_DIR}/webserver" "./gradlew bootRun"
 start_service "agent" "${ROOT_DIR}/Agent" "'${UV_BIN}' run main.py"
 start_service "doh" "${ROOT_DIR}/DoH" \
-  "env DOH_LISTEN_PORT=\${DOH_LISTEN_PORT:-8443} DOH_ANALYTICS_EP=\${DOH_ANALYTICS_EP:-localhost:50051} DOH_CERT_CHAIN=\${DOH_CERT_CHAIN:-certs/fullchain.pem} DOH_PRIVATE_KEY=\${DOH_PRIVATE_KEY:-certs/privkey.pem} \${DOH_BINARY:-./build/doh-forwarder}"
+  "env \
+DOH_ENV_FILE=\${DOH_ENV_FILE:-.env} \
+DOH_LISTEN_ADDR=\${DOH_LISTEN_ADDR:-0.0.0.0} \
+DOH_LISTEN_PORT=\${DOH_LISTEN_PORT:-8443} \
+DOH_CERT_CHAIN=\${DOH_CERT_CHAIN:-certs/fullchain.pem} \
+DOH_PRIVATE_KEY=\${DOH_PRIVATE_KEY:-certs/privkey.pem} \
+DOH_DNS_UPSTREAM=\${DOH_DNS_UPSTREAM:-127.0.0.53} \
+DOH_DNS_PORT=\${DOH_DNS_PORT:-53} \
+DOH_DNS_TIMEOUT_MS=\${DOH_DNS_TIMEOUT_MS:-3000} \
+DOH_DNS_MIN_TTL=\${DOH_DNS_MIN_TTL:-30} \
+DOH_DNS_MAX_TTL=\${DOH_DNS_MAX_TTL:-60} \
+DOH_FILTER_ENABLED=\${DOH_FILTER_ENABLED:-true} \
+DOH_REDIS_HOST=\${DOH_REDIS_HOST:-127.0.0.1} \
+DOH_REDIS_PORT=\${DOH_REDIS_PORT:-6379} \
+DOH_REDIS_PASSWORD=\${DOH_REDIS_PASSWORD:-} \
+DOH_REDIS_TIMEOUT_MS=\${DOH_REDIS_TIMEOUT_MS:-5000} \
+DOH_REDIS_REFRESH_MS=\${DOH_REDIS_REFRESH_MS:-1000} \
+DOH_FILTER_FAIL_OPEN=\${DOH_FILTER_FAIL_OPEN:-false} \
+DOH_BLOCK_RESPONSE=\${DOH_BLOCK_RESPONSE:-NXDOMAIN} \
+DOH_ANALYTICS_EP=\${DOH_ANALYTICS_EP:-localhost:50051} \
+DOH_ANALYTICS_CAP=\${DOH_ANALYTICS_CAP:-4096} \
+DOH_LOG_LEVEL=\${DOH_LOG_LEVEL:-debug} \
+\${DOH_BINARY:-./build/doh-forwarder}"
 
 echo
 echo "Started services. Use 'sh scripts/local-status.sh' to inspect status."

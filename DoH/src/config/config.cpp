@@ -2,6 +2,8 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <algorithm>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <thread>
@@ -88,6 +90,56 @@ std::string env_str(const char* key, std::string_view def) {
     return v ? v : std::string(def);
 }
 
+bool env_bool(const char* key, bool def) {
+    std::string value = env_str(key, def ? "true" : "false");
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (value == "1" || value == "true" || value == "yes" || value == "on") {
+        return true;
+    }
+    if (value == "0" || value == "false" || value == "no" || value == "off") {
+        return false;
+    }
+
+    spdlog::warn("Invalid {}='{}'; falling back to {}", key, value, def);
+    return def;
+}
+
+std::optional<std::string> first_resolver_from_file(const char* path) {
+    std::ifstream f(path);
+    if (!f.is_open()) return std::nullopt;
+
+    std::string line;
+    while (std::getline(f, line)) {
+        std::string_view sv = trim(line);
+        if (sv.empty() || sv.starts_with('#')) continue;
+        if (!sv.starts_with("nameserver")) continue;
+
+        sv.remove_prefix(std::string_view("nameserver").size());
+        sv = trim(sv);
+        const auto end = sv.find_first_of(" \t");
+        if (end != std::string_view::npos) {
+            sv = sv.substr(0, end);
+        }
+        if (!sv.empty()) return std::string(sv);
+    }
+
+    return std::nullopt;
+}
+
+std::string default_dns_upstream() {
+    if (const char* v = std::getenv("DOH_DNS_UPSTREAM"); v != nullptr) {
+        return v;
+    }
+
+    if (auto resolver = first_resolver_from_file("/etc/resolv.conf")) {
+        return *resolver;
+    }
+
+    return "8.8.8.8";
+}
+
 uint16_t env_u16(const char* key, uint16_t def) {
     const char* v = std::getenv(key);
     return v ? static_cast<uint16_t>(std::stoul(v)) : def;
@@ -115,6 +167,22 @@ BlockResponsePolicy env_block_response_policy(const char* key,
     return def;
 }
 
+std::string env_log_level(const char* key, std::string_view def) {
+    std::string value = env_str(key, def);
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (value == "trace" || value == "debug" || value == "info" ||
+        value == "warn" || value == "warning" || value == "error" ||
+        value == "critical" || value == "off") {
+        if (value == "warning") return "warn";
+        return value;
+    }
+
+    spdlog::warn("Invalid {}='{}'; falling back to {}", key, value, def);
+    return std::string(def);
+}
+
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,19 +198,23 @@ Config Config::from_env() {
     c.listen_port          = env_u16("DOH_LISTEN_PORT",    443);
     c.cert_chain_file      = env_str("DOH_CERT_CHAIN",     "certs/fullchain.pem");
     c.private_key_file     = env_str("DOH_PRIVATE_KEY",    "certs/privkey.pem");
-    c.dns_upstream_host    = env_str("DOH_DNS_UPSTREAM",   "8.8.8.8");
+    c.dns_upstream_host    = default_dns_upstream();
     c.dns_upstream_port    = env_u16("DOH_DNS_PORT",       53);
     c.dns_timeout_ms       = env_u32("DOH_DNS_TIMEOUT_MS", 3000);
     c.dns_min_ttl_s        = env_u32("DOH_DNS_MIN_TTL",    30);
     c.dns_max_ttl_s        = env_u32("DOH_DNS_MAX_TTL",    60);
-    c.filter_enabled       = env_str("DOH_FILTER_ENABLED", "false") == "true";
+    c.filter_enabled       = env_bool("DOH_FILTER_ENABLED", false);
     c.redis_host           = env_str("DOH_REDIS_HOST",     "127.0.0.1");
     c.redis_port           = env_u16("DOH_REDIS_PORT",     6379);
     c.redis_password       = env_str("DOH_REDIS_PASSWORD", "");
+    c.redis_timeout_ms     = env_u32("DOH_REDIS_TIMEOUT_MS", 1000);
+    c.redis_refresh_ms     = env_u32("DOH_REDIS_REFRESH_MS", 1000);
+    c.filter_fail_open     = env_bool("DOH_FILTER_FAIL_OPEN", true);
     c.block_response_policy = env_block_response_policy(
         "DOH_BLOCK_RESPONSE", BlockResponsePolicy::nxdomain);
     c.analytics_endpoint   = env_str("DOH_ANALYTICS_EP",   "localhost:50051");
     c.analytics_queue_cap  = env_sz ("DOH_ANALYTICS_CAP",  4096);
+    c.log_level            = env_log_level("DOH_LOG_LEVEL", "debug");
 
     const auto hw  = std::thread::hardware_concurrency();
     c.thread_count = (hw > 0) ? hw : 4;

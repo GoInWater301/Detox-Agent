@@ -152,6 +152,8 @@ sh scripts/local-status.sh
 sh scripts/local-down.sh
 ```
 
+`local-down.sh`는 `.run/*.pid`가 없어도 기본 포트를 기준으로 프로세스를 찾아 종료를 시도합니다. 다만 `sudo`로 띄운 프로세스는 일반 권한으로는 종료되지 않을 수 있으므로, 그 경우 `sudo kill ...` 또는 `sudo fuser -k ...`로 정리해야 합니다.
+
 실행 전 권장 순서:
 
 ```sh
@@ -173,8 +175,10 @@ cd ..
 주의 사항:
 - `scripts/local-up.sh`는 가능하면 `sudo` 없이 실행하는 편이 안전합니다.
 - `sudo`는 포트 점유 프로세스 정리할 때만 사용하는 것을 권장합니다.
+- `sudo`로 실행한 서비스는 `scripts/local-down.sh`에서 일반 권한으로 종료되지 않을 수 있습니다.
 - 로그는 `logs/` 디렉터리에 저장됩니다.
 - 셸 환경에 따라 `uv`가 PATH에 없을 수 있으므로 필요하면 `UV_BIN=/home/<user>/.local/bin/uv` 를 명시해 실행하세요.
+- `scripts/local-up.sh`는 DoH 필터를 기본 활성화로 실행합니다. 끄려면 `DOH_FILTER_ENABLED=false`를 명시하세요.
 
 ## 주요 엔드포인트
 

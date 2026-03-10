@@ -12,6 +12,9 @@ DOH_FILTER_ENABLED=true
 DOH_REDIS_HOST=127.0.0.1
 DOH_REDIS_PORT=6379
 DOH_REDIS_PASSWORD=            # 없으면 생략
+DOH_REDIS_TIMEOUT_MS=5000
+DOH_REDIS_REFRESH_MS=1000
+DOH_FILTER_FAIL_OPEN=true      # Redis 장애 시 true=허용, false=차단
 DOH_BLOCK_RESPONSE=NXDOMAIN   # 또는 REFUSED
 ```
 
@@ -122,7 +125,8 @@ Question:  (원본 쿼리 Question Section 복사)
 
 ## 내부 동작 (Lua 스크립트)
 
-Redis 서버에서 단 하나의 EVAL 호출로 처리합니다 (1회 네트워크 왕복).
+Redis 서버는 메모리 캐시 동기화 소스로만 사용합니다. 서버는 단 하나의 EVAL 호출로
+전체 스냅샷을 가져와 로컬 캐시를 갱신하고, 요청 경로에서는 메모리에서만 suffix 매칭합니다.
 
 ```lua
 local global_key = "doh:block:global"
@@ -151,15 +155,18 @@ return 0
 
 ---
 
-## 장애 처리 (Fail-Open)
+## 장애 처리
 
 Redis가 다운되거나 응답이 없으면:
 
-- 필터 검사를 건너뛰고 **쿼리를 허용합니다**
-- `warn` 레벨 로그를 기록합니다
-- DoH 서비스는 **무중단으로 계속 동작합니다**
+- `DOH_FILTER_FAIL_OPEN=true` 이면 필터 검사를 건너뛰고 **쿼리를 허용합니다**
+- `DOH_FILTER_FAIL_OPEN=false` 이면 안전하게 **쿼리를 차단합니다**
+- timeout / Redis 오류는 `warn` 레벨 로그를 기록합니다
 
-이 정책은 가용성 > 보안을 우선시합니다. 정책을 변경하려면 `src/filter/redis_domain_filter.cpp` 의 `cb(false)` 를 `cb(true)` 로 바꾸면 Fail-Closed 동작이 됩니다.
+현재 구현은 Redis 스냅샷 동기화에 timeout을 두며 기본값은 `5000ms` 입니다. 필요하면 `DOH_REDIS_TIMEOUT_MS`로 조정할 수 있습니다.
+추가/삭제 반영 지연은 `DOH_REDIS_REFRESH_MS` 기본값 `1000ms` 이내입니다.
+
+운영에서 우회보다 차단 일관성이 중요하면 `DOH_FILTER_FAIL_OPEN=false` 를 권장합니다.
 
 ---
 
@@ -167,10 +174,10 @@ Redis가 다운되거나 응답이 없으면:
 
 | 항목 | 값 |
 |------|-----|
-| 네트워크 왕복 | 1회 (Lua EVAL 파이프라인) |
-| 도메인당 Redis 연산 | O(depth) SISMEMBER (최대 ~6) |
-| Redis 연결 | 영구 연결 (`boost::redis::connection::async_run`) |
-| 장애 시 오버헤드 | 없음 (fail-open 즉시 반환) |
+| 요청 경로 네트워크 왕복 | 0회 (메모리 조회만 수행) |
+| 도메인당 필터 연산 | O(depth) 해시셋 조회 (최대 ~6) |
+| Redis 연결 | 백그라운드 스냅샷 동기화용 영구 연결 |
+| 추가/삭제 반영 지연 | 기본 1초 (`DOH_REDIS_REFRESH_MS`) |
 
 ---
 

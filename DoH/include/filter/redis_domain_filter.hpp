@@ -4,11 +4,14 @@
 
 #include <boost/asio.hpp>
 #include <boost/redis.hpp>
+#include <shared_mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace doh::filter {
 
-// Redis-backed per-user domain filter.
+// Redis-backed cached per-user domain filter.
 //
 // Redis data model
 // ─────────────────
@@ -21,20 +24,27 @@ namespace doh::filter {
 //     • example.com   (exact match)
 //     • *.example.com (all subdomains, e.g. ads.example.com, api.example.com)
 //
-//   A single EVAL call runs a Lua script on Redis that iterates from the most
-//   specific label to the TLD, checking both sets at each level.
-//   This means one network round-trip per DoH request.
+//   Redis is used only as the source of truth. The request path consults a
+//   local in-memory snapshot that is refreshed in the background.
 //
 // Failure mode
 // ────────────
-//   If Redis is unreachable the filter fails-open (allows the query through)
-//   and logs a warning.  The DoH service remains fully operational.
+//   If Redis is unreachable the filter can fail-open (allow) or fail-closed
+//   (block), controlled by configuration.
 class RedisDomainFilter : public DomainFilter {
 public:
+    struct Snapshot {
+        std::unordered_set<std::string> global;
+        std::unordered_map<std::string, std::unordered_set<std::string>> per_user;
+    };
+
     RedisDomainFilter(boost::asio::io_context& ioc,
                       std::string              host,
                       uint16_t                 port,
-                      std::string              password);
+                      std::string              password,
+                      uint32_t                 timeout_ms,
+                      uint32_t                 refresh_ms,
+                      bool                     fail_open);
 
     void async_check(std::string                  user_id,
                       std::string                  domain,
@@ -42,7 +52,17 @@ public:
                       FilterCallback               cb) override;
 
 private:
-    boost::redis::connection conn_;
+    void schedule_refresh(std::chrono::milliseconds delay);
+    void refresh_snapshot();
+
+    boost::asio::steady_timer refresh_timer_;
+    boost::redis::config redis_cfg_;
+    std::chrono::milliseconds timeout_;
+    std::chrono::milliseconds refresh_interval_;
+    bool fail_open_ = true;
+    bool ready_ = false;
+    mutable std::shared_mutex snapshot_mu_;
+    Snapshot snapshot_;
 };
 
 } // namespace doh::filter
