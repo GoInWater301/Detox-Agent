@@ -5,7 +5,9 @@
 
 # Build artifacts
 DoH/build-local/
+DoH/build-local-*/
 DoH/build/
+DoH/build-verify/
 DoH/build-codex/
 DoH/.codex/
 **/__pycache__/
