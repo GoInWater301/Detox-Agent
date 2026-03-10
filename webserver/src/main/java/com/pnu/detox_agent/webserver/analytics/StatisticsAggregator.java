@@ -3,7 +3,7 @@ package com.pnu.detox_agent.webserver.analytics;
 import com.pnu.detox_agent.webserver.service.UsagePersistenceService;
 import com.pnu.detox_agent.webserver.service.UsageTrackingService;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
 import java.util.Locale;
@@ -18,6 +18,7 @@ import reactor.core.publisher.Mono;
 public class StatisticsAggregator {
 
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final ZoneId ANALYTICS_ZONE = ZoneId.of("Asia/Seoul");
 
     private final ReactiveStringRedisTemplate redisTemplate;
     private final UsagePersistenceService usagePersistenceService;
@@ -33,7 +34,19 @@ public class StatisticsAggregator {
     public void aggregateRealTimeStats() {
         redisTemplate.keys("usage:index:user:*")
                 .map(key -> key.substring("usage:index:user:".length()))
+                .filter(this::isRootUserIndex)
                 .flatMap(this::aggregateUserStats)
+                .onErrorResume(ex -> Mono.empty())
+                .subscribe();
+    }
+
+    @Scheduled(cron = "0 5 0 * * *", zone = "Asia/Seoul")
+    public void finalizePreviousDailySnapshots() {
+        String previousDayBucket = LocalDate.now(ANALYTICS_ZONE).minusDays(1).toString();
+        redisTemplate.keys("usage:index:user:*")
+                .map(key -> key.substring("usage:index:user:".length()))
+                .filter(this::isRootUserIndex)
+                .flatMap(userId -> persistPeriodSnapshot(userId, "daily", previousDayBucket))
                 .onErrorResume(ex -> Mono.empty())
                 .subscribe();
     }
@@ -58,7 +71,7 @@ public class StatisticsAggregator {
     }
 
     private String currentBucket(String period) {
-        LocalDate now = LocalDate.now(ZoneOffset.UTC);
+        LocalDate now = LocalDate.now(ANALYTICS_ZONE);
         return switch (period) {
             case "weekly" -> {
                 WeekFields weekFields = WeekFields.of(Locale.ROOT);
@@ -80,5 +93,9 @@ public class StatisticsAggregator {
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private boolean isRootUserIndex(String keySuffix) {
+        return !keySuffix.contains(":");
     }
 }

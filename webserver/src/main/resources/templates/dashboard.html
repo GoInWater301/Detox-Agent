@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detox Agent - 사용 현황</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .fade-in { animation: fadeIn 0.25s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .skeleton { background: linear-gradient(90deg, #1e293b 25%, #293548 50%, #1e293b 75%);
+                    background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* risk level bar colors */
+        .bar-danger  { background: rgba(239,68,68,0.65); }
+        .bar-warning { background: rgba(245,158,11,0.65); }
+        .bar-caution { background: rgba(234,179,8,0.55); }
+        .bar-safe    { background: rgba(100,116,139,0.45); }
+        .prose h2 { font-size: 1rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: #f1f5f9; }
+        .prose p { margin-bottom: 0.5rem; line-height: 1.6; color: #cbd5e1; }
+        .prose ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; color: #cbd5e1; }
+        .prose li { margin-bottom: 0.2rem; }
+        .prose strong { color: #f8fafc; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+<header class="fixed top-0 inset-x-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800">
+    <div class="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-2.5 shrink-0">
+            <div class="w-7 h-7 bg-slate-700 rounded flex items-center justify-center">
+                <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+            </div>
+            <span class="font-medium text-slate-300 text-sm tracking-tight hidden sm:block">Detox Agent</span>
+            <span class="text-xs text-slate-600 hidden sm:block">/ 사용 현황</span>
+        </div>
+
+        <div class="flex-1 min-w-0 max-w-md hidden md:flex items-center gap-2">
+            <span class="text-xs text-slate-600 shrink-0">DoH</span>
+            <code id="doh-url-display"
+                  class="flex-1 min-w-0 text-xs text-slate-500 bg-slate-800/50 border border-slate-800
+                         rounded px-2.5 py-1 truncate cursor-pointer hover:text-slate-300 transition"
+                  title="클릭하여 복사" onclick="copyDohUrl()">—</code>
+        </div>
+
+        <div class="flex items-center gap-3 shrink-0">
+            <span id="username-display" class="text-sm text-slate-400 hidden sm:block">—</span>
+            <a href="/review"
+               class="text-xs text-slate-500 hover:text-slate-200 px-2.5 py-1.5 rounded border border-slate-800
+                      hover:border-slate-600 transition">
+                AI Review
+            </a>
+            <a href="/blocklist"
+               class="text-xs text-slate-500 hover:text-slate-200 px-2.5 py-1.5 rounded border border-slate-800
+                      hover:border-slate-600 transition">
+                차단 목록
+            </a>
+            <button onclick="logout()"
+                    class="text-xs text-slate-500 hover:text-slate-200 px-2.5 py-1.5 rounded border border-slate-800
+                           hover:border-slate-600 transition">
+                로그아웃
+            </button>
+        </div>
+    </div>
+</header>
+
+<main class="pt-14 max-w-screen-xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+
+    <div id="risk-banner" class="hidden items-center gap-3 bg-red-950/60 border border-red-800/50 rounded-lg px-4 py-3">
+        <svg class="w-5 h-5 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <p id="risk-banner-text" class="text-sm text-red-300"></p>
+    </div>
+
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1">
+            <h2 class="text-base font-semibold text-slate-200">인터넷 사용 현황</h2>
+            <p class="text-xs text-slate-500 mt-0.5">DNS 질의 기반 추정 — 실제 체류 시간과 차이가 있을 수 있습니다</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            <input type="date" id="date-picker"
+                   class="bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded px-3 py-2
+                          focus:outline-none focus:ring-1 focus:ring-slate-500 transition">
+            <div class="flex bg-slate-800 border border-slate-700 rounded p-0.5 gap-0.5">
+                <button data-period="daily"   onclick="setPeriod('daily')"   class="period-btn px-3 py-1.5 rounded text-xs font-medium transition active-period">일간</button>
+                <button data-period="weekly"  onclick="setPeriod('weekly')"  class="period-btn px-3 py-1.5 rounded text-xs font-medium transition">주간</button>
+                <button data-period="monthly" onclick="setPeriod('monthly')" class="period-btn px-3 py-1.5 rounded text-xs font-medium transition">월간</button>
+            </div>
+            <button type="button" onclick="refreshAll()" title="새로고침"
+                    class="p-2 rounded bg-slate-800 border border-slate-700 text-slate-500 hover:text-slate-200 transition">
+                <svg id="refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+            <p class="text-xs text-slate-500 mb-2">총 DNS 질의</p>
+            <p id="stat-total-queries" class="text-xl font-semibold text-slate-200">—</p>
+            <p class="text-xs text-slate-600 mt-1">건</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+            <p class="text-xs text-slate-500 mb-2">접속 도메인 수</p>
+            <p id="stat-unique-domains" class="text-xl font-semibold text-slate-200">—</p>
+            <p class="text-xs text-slate-600 mt-1">개 도메인</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+            <p class="text-xs text-slate-500 mb-2">추정 총 사용 시간</p>
+            <p id="stat-total-duration" class="text-xl font-semibold text-slate-200">—</p>
+            <p class="text-xs text-slate-600 mt-1">오늘 기준</p>
+        </div>
+        <div id="risk-card" class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+            <p class="text-xs text-slate-500 mb-2">사용 위험 수준</p>
+            <p id="stat-risk-level" class="text-xl font-semibold text-slate-400">—</p>
+            <p id="stat-risk-desc" class="text-xs text-slate-600 mt-1">데이터 없음</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        <div class="xl:col-span-3 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-800">
+                <div>
+                    <h3 class="text-sm font-medium text-slate-300">도메인별 추정 사용 시간</h3>
+                    <p class="text-xs text-slate-600 mt-0.5">높을수록 주의가 필요합니다</p>
+                </div>
+                <span id="domain-date-label" class="text-xs text-slate-600"></span>
+            </div>
+            <div class="grid grid-cols-12 text-xs text-slate-600 px-5 py-2 border-b border-slate-800/60">
+                <div class="col-span-1">위험</div>
+                <div class="col-span-3">도메인</div>
+                <div class="col-span-2 text-right">질의</div>
+                <div class="col-span-2 text-right">사용(분)</div>
+                <div class="col-span-1 text-right">응답ms</div>
+                <div class="col-span-1 text-right">마지막</div>
+                <div class="col-span-2 text-right">차단</div>
+            </div>
+            <div id="domain-table-body" class="divide-y divide-slate-800/40 max-h-[440px] overflow-y-auto"></div>
+            <div id="domain-empty" class="hidden px-5 py-10 text-center text-sm text-slate-600">
+                해당 날짜의 DNS 데이터가 없습니다
+            </div>
+            <div class="px-5 py-2.5 border-t border-slate-800/60 flex items-center gap-3">
+                <span class="flex items-center gap-1.5 text-xs text-slate-600">
+                    <span class="inline-block w-2.5 h-2.5 rounded-sm bg-red-500/60"></span>위험(60분↑)
+                </span>
+                <span class="flex items-center gap-1.5 text-xs text-slate-600">
+                    <span class="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500/60"></span>주의(30분↑)
+                </span>
+                <span class="flex items-center gap-1.5 text-xs text-slate-600">
+                    <span class="inline-block w-2.5 h-2.5 rounded-sm bg-yellow-500/55"></span>관찰(10분↑)
+                </span>
+                <span class="flex items-center gap-1.5 text-xs text-slate-600">
+                    <span class="inline-block w-2.5 h-2.5 rounded-sm bg-slate-500/45"></span>정상
+                </span>
+            </div>
+        </div>
+
+        <div class="xl:col-span-2 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-800">
+                <h3 class="text-sm font-medium text-slate-300">시간대별 질의 추이</h3>
+                <p class="text-xs text-slate-600 mt-0.5">질의가 몰리는 시간대를 확인하세요</p>
+            </div>
+            <div class="p-4 relative">
+                <div class="relative h-[380px]">
+                    <canvas id="timeline-chart"></canvas>
+                    <div id="chart-skeleton" class="absolute inset-0 flex items-center justify-center">
+                        <div class="skeleton w-full h-full rounded opacity-30"></div>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-700 text-center mt-2">* DNS 질의 빈도가 실제 사용 시간과 일치하지 않을 수 있습니다</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-800">
+            <div>
+                <h3 class="text-sm font-medium text-slate-300">AI 사용 패턴 분석</h3>
+                <p class="text-xs text-slate-600 mt-0.5">현재 데이터를 기반으로 중독 위험 요인을 분석합니다</p>
+            </div>
+            <span id="ai-model-badge" class="hidden text-xs text-slate-500 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded"></span>
+        </div>
+        <div class="p-5">
+            <div class="flex items-center gap-2 mb-4">
+                <span class="text-xs text-slate-500">AI 분석 기간</span>
+                <button type="button" data-ai-period="daily" onclick="setAiPeriod('daily')"
+                        class="ai-period-btn px-2.5 py-1 text-xs rounded border border-slate-700 bg-slate-800 text-slate-300 transition">
+                    일별
+                </button>
+                <button type="button" data-ai-period="weekly" onclick="setAiPeriod('weekly')"
+                        class="ai-period-btn px-2.5 py-1 text-xs rounded border border-slate-700 bg-slate-900 text-slate-500 transition">
+                    주별
+                </button>
+                <button type="button" data-ai-period="monthly" onclick="setAiPeriod('monthly')"
+                        class="ai-period-btn px-2.5 py-1 text-xs rounded border border-slate-700 bg-slate-900 text-slate-500 transition">
+                    월별
+                </button>
+                <span id="ai-period-desc" class="text-xs text-slate-600 ml-2">오늘 데이터 기준 분석</span>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                <textarea id="ai-prompt"
+                          class="flex-1 bg-slate-800 border border-slate-700 text-sm text-slate-300 rounded px-4 py-2.5
+                                 focus:outline-none focus:ring-1 focus:ring-slate-500 placeholder-slate-600 resize-none transition"
+                          rows="2"
+                          placeholder="분석 요청을 입력하세요 (예: 가장 오래 사용한 도메인과 줄이는 방법을 알려줘)"></textarea>
+                <button type="button" id="ai-submit-btn" onclick="startAiReview()"
+                        class="sm:w-24 shrink-0 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium
+                               px-4 py-2.5 rounded transition flex items-center justify-center gap-2">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <span>분석</span>
+                </button>
+            </div>
+            <div id="ai-placeholder" class="text-slate-700 text-sm text-center py-6">
+                분석 버튼을 눌러 AI 진단을 시작하세요
+            </div>
+            <div id="ai-output-box" class="hidden bg-slate-800/40 border border-slate-700/60 rounded p-4 min-h-[100px] max-h-96 overflow-y-auto">
+                <div id="ai-output" class="prose prose-invert max-w-none text-sm text-slate-300 leading-relaxed"></div>
+                <span id="ai-cursor" class="hidden inline-block w-0.5 h-4 bg-slate-500 ml-0.5 animate-pulse align-middle"></span>
+            </div>
+            <div id="ai-error-box" class="hidden bg-red-950/40 border border-red-800/40 text-red-400 text-sm rounded p-3"></div>
+        </div>
+    </div>
+</main>
+
+<div id="toast" class="fixed bottom-4 right-4 bg-slate-800 border border-slate-700 text-xs text-slate-300 px-3 py-2 rounded shadow-xl opacity-0 pointer-events-none transition-all duration-200 z-50"></div>
+
+<script>
+    const token = localStorage.getItem('detox_token');
+    const username = localStorage.getItem('detox_username') || '';
+    const dohUrl = localStorage.getItem('detox_doh_url') || '';
+    if (!token) window.location.replace('/login');
+
+    document.getElementById('username-display').textContent = username;
+    document.getElementById('doh-url-display').textContent = dohUrl || '(미설정)';
+
+    const todayDate = new Date();
+    const todayStr = [
+        todayDate.getFullYear(),
+        String(todayDate.getMonth() + 1).padStart(2, '0'),
+        String(todayDate.getDate()).padStart(2, '0')
+    ].join('-');
+    document.getElementById('date-picker').value = todayStr;
+    document.getElementById('domain-date-label').textContent = fmtDateLabel(todayStr);
+    document.getElementById('date-picker').addEventListener('change', () => {
+        getDomainRange();
+        loadDomainUsage();
+    });
+
+    let currentPeriod = 'daily';
+    let aiPeriod = 'daily';
+    let timelineChart = null;
+    let refreshTimer = null;
+    let relativeTimeTimer = null;
+    let aiText = '';
+    let currentDomains = [];
+    let blockedDomains = new Set();
+    let pendingBlockDomains = new Set();
+
+    refreshAll();
+    setAiPeriod(aiPeriod);
+    startAutoRefresh();
+    startRelativeTimeRefresh();
+
+    function setPeriod(p) {
+        currentPeriod = p;
+        document.querySelectorAll('.period-btn').forEach(b => {
+            b.classList.toggle('active-period', b.dataset.period === p);
+        });
+        refreshAll();
+    }
+
+    function setAiPeriod(period) {
+        aiPeriod = period;
+        document.querySelectorAll('.ai-period-btn').forEach(b => {
+            const active = b.dataset.aiPeriod === period;
+            b.classList.toggle('bg-slate-800', active);
+            b.classList.toggle('text-slate-300', active);
+            b.classList.toggle('bg-slate-900', !active);
+            b.classList.toggle('text-slate-500', !active);
+        });
+        document.getElementById('ai-period-desc').textContent = `${periodLabel(period)} 데이터 기준 분석`;
+    }
+
+    function startAutoRefresh() {
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = setInterval(() => { if (!document.hidden) refreshAll(); }, 60000);
+    }
+
+    function startRelativeTimeRefresh() {
+        if (relativeTimeTimer) clearInterval(relativeTimeTimer);
+        relativeTimeTimer = setInterval(() => {
+            if (!document.hidden) refreshRelativeTimes();
+        }, 30000);
+    }
+
+    function refreshAll() {
+        const icon = document.getElementById('refresh-icon');
+        icon.classList.add('animate-spin');
+        Promise.all([loadUsageStats(), loadBlockedDomains(), loadDomainUsage(), loadTimeline()])
+            .finally(() => setTimeout(() => icon.classList.remove('animate-spin'), 600));
+    }
+
+    async function apiFetch(path, opts = {}) {
+        const res = await fetch(path, {
+            ...opts,
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+        });
+        if (res.status === 401) { logout(); throw new Error('세션 만료'); }
+        return res;
+    }
+
+    async function loadUsageStats() {
+        try {
+            const res = await apiFetch(`/api/dashboard/users/${username}/usage?period=${currentPeriod}`);
+            if (!res.ok) { renderStatsEmpty(); return; }
+            renderStats(await res.json());
+        } catch { renderStatsEmpty(); }
+    }
+
+    function renderStats(data) {
+        document.getElementById('stat-total-queries').textContent = fmtNum(data.totalQueries);
+        document.getElementById('stat-unique-domains').textContent = fmtNum(data.uniqueDomains);
+        const totalMin = (data.topDomains || []).reduce((s, d) => s + (d.totalDuration || 0), 0);
+        document.getElementById('stat-total-duration').textContent = fmtDuration(totalMin);
+        const { label, cls, desc, banner } = riskLevel(totalMin);
+        const riskEl = document.getElementById('stat-risk-level');
+        const riskCard = document.getElementById('risk-card');
+        riskEl.textContent = label;
+        riskEl.className = `text-xl font-semibold ${cls}`;
+        document.getElementById('stat-risk-desc').textContent = desc;
+        riskCard.className = riskCard.className.replace(/border-\S+/g, '').trim();
+        if (totalMin >= 120) riskCard.classList.add('border-red-800/60', 'bg-red-950/30');
+        else if (totalMin >= 60) riskCard.classList.add('border-amber-800/50', 'bg-amber-950/20');
+        else riskCard.classList.add('border-slate-800');
+        const bEl = document.getElementById('risk-banner');
+        if (banner) { document.getElementById('risk-banner-text').textContent = banner; bEl.classList.replace('hidden', 'flex'); }
+        else { bEl.classList.replace('flex', 'hidden'); }
+    }
+
+    function renderStatsEmpty() {
+        ['stat-total-queries','stat-unique-domains','stat-total-duration','stat-risk-level'].forEach(id => { document.getElementById(id).textContent = '—'; });
+        document.getElementById('stat-risk-desc').textContent = '데이터 없음';
+        document.getElementById('risk-banner').classList.add('hidden');
+    }
+
+    async function loadDomainUsage() {
+        const { startDate, endDate } = getDomainRange();
+        const params = new URLSearchParams();
+        if (startDate) params.set('startDate', startDate);
+        if (endDate) params.set('endDate', endDate);
+        try {
+            const res = await apiFetch(`/api/dashboard/users/${username}/domains?${params.toString()}`);
+            if (!res.ok) { renderDomainEmpty(); return; }
+            renderDomainTable(await res.json());
+        } catch { renderDomainEmpty(); }
+    }
+
+    function renderDomainTable(domains) {
+        currentDomains = Array.isArray(domains) ? [...domains] : [];
+        const tbody = document.getElementById('domain-table-body');
+        const empty = document.getElementById('domain-empty');
+        if (!domains || domains.length === 0) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        domains.sort((a, b) => b.totalDuration - a.totalDuration);
+        const maxDur = domains[0].totalDuration || 1;
+        tbody.innerHTML = domains.map(d => {
+            const min = Math.round((d.totalDuration || 0) * 10) / 10;
+            const pct = Math.min(100, (d.totalDuration / maxDur) * 100);
+            const { badge, barCls } = domainRisk(min);
+            const isBlocked = blockedDomains.has(d.domain);
+            const isPending = pendingBlockDomains.has(d.domain);
+            return `
+            <div class="px-5 py-2.5 grid grid-cols-12 items-center hover:bg-slate-800/20 transition fade-in">
+                <div class="col-span-1">${badge}</div>
+                <div class="col-span-3 min-w-0 pr-2">
+                    <p class="text-xs text-slate-300 truncate">${escHtml(d.domain)}</p>
+                    <div class="mt-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full ${barCls}" style="width:${pct}%"></div>
+                    </div>
+                </div>
+                <div class="col-span-2 text-right text-xs text-slate-400">${fmtNum(d.requestCount)}</div>
+                <div class="col-span-2 text-right text-xs font-medium text-slate-300">${min}<span class="text-slate-600 font-normal">분</span></div>
+                <div class="col-span-1 text-right text-xs text-slate-500">${d.averageResponseTimeMs}</div>
+                <div class="col-span-1 text-right text-xs text-slate-600 last-access-cell" data-last-access="${d.lastAccess || ''}">${d.lastAccess ? fmtLastSeen(d.lastAccess) : '—'}</div>
+                <div class="col-span-2 flex justify-end">
+                    <button type="button"
+                            onclick="${isBlocked ? `unblockDomain('${escJs(d.domain)}')` : `blockDomain('${escJs(d.domain)}')`}"
+                            ${isPending ? 'disabled' : ''}
+                            class="min-w-[68px] px-2.5 py-1 rounded border text-[11px] transition ${isBlocked
+                                ? 'border-red-800/60 text-red-300 bg-red-950/30 hover:bg-red-950/45'
+                                : 'border-slate-700 text-slate-300 bg-slate-800 hover:bg-slate-700'} ${isPending ? 'opacity-50 cursor-not-allowed' : ''}">
+                        ${isPending ? '처리중' : (isBlocked ? '해제' : '차단')}
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+        refreshRelativeTimes();
+    }
+
+    function renderDomainEmpty() { document.getElementById('domain-table-body').innerHTML = ''; document.getElementById('domain-empty').classList.remove('hidden'); }
+
+    async function loadBlockedDomains() {
+        try {
+            const res = await apiFetch('/api/blocklist');
+            if (!res.ok) return;
+            blockedDomains = new Set(await res.json());
+            if (currentDomains.length) renderDomainTable(currentDomains);
+        } catch {}
+    }
+
+    async function blockDomain(domain) {
+        await updateBlockState(domain, 'POST');
+    }
+
+    async function unblockDomain(domain) {
+        await updateBlockState(domain, 'DELETE');
+    }
+
+    async function updateBlockState(domain, method) {
+        pendingBlockDomains.add(domain);
+        renderDomainTable(currentDomains);
+        try {
+            const path = method === 'POST'
+                ? '/api/blocklist'
+                : `/api/blocklist/${encodeURIComponent(domain)}`;
+            const options = method === 'POST'
+                ? { method, body: JSON.stringify({ domain }) }
+                : { method };
+            const res = await apiFetch(path, options);
+            if (!res.ok) throw new Error('차단 설정에 실패했습니다');
+            if (method === 'POST') {
+                blockedDomains.add(domain);
+                showToast(`${domain} 차단됨`);
+            } else {
+                blockedDomains.delete(domain);
+                showToast(`${domain} 차단 해제됨`);
+            }
+        } catch (err) {
+            showToast(err.message || '차단 설정에 실패했습니다');
+        } finally {
+            pendingBlockDomains.delete(domain);
+            renderDomainTable(currentDomains);
+        }
+    }
+
+    async function loadTimeline() {
+        document.getElementById('chart-skeleton').classList.remove('hidden');
+        try {
+            const res = await apiFetch(`/api/dashboard/users/${username}/timeline?period=${currentPeriod}`);
+            if (!res.ok) { renderChartEmpty(); return; }
+            renderChart(await res.json());
+        } catch { renderChartEmpty(); }
+        document.getElementById('chart-skeleton').classList.add('hidden');
+    }
+
+    function renderChart(data) {
+        const ctx = document.getElementById('timeline-chart').getContext('2d');
+        if (timelineChart) timelineChart.destroy();
+        if (!data || !data.length) { renderChartEmpty(); return; }
+        timelineChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(d => d.bucket),
+                datasets: [
+                    { label: '총 질의', data: data.map(d => d.totalQueries), backgroundColor: 'rgba(100,116,139,0.55)', borderColor: 'rgba(100,116,139,0.8)', borderWidth: 1, borderRadius: 3, yAxisID: 'y', },
+                    { label: '고유 도메인', data: data.map(d => d.uniqueDomains), type: 'line', borderColor: 'rgba(148,163,184,0.7)', backgroundColor: 'rgba(148,163,184,0.05)', borderWidth: 1.5, pointRadius: 2, fill: false, tension: 0.4, yAxisID: 'y1', }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { labels: { color: '#475569', font: { size: 10 }, boxWidth: 10 } } },
+                scales: {
+                    x: { ticks: { color: '#475569', font: { size: 10 }, maxRotation: 45 }, grid: { color: '#1a2235', display: false } },
+                    y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#1a2235', } },
+                    y1: { position: 'right', ticks: { color: '#475569', font: { size: 10 } }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    }
+
+    function renderChartEmpty() { if (timelineChart) timelineChart.destroy(); }
+
+    async function startAiReview() {
+        const rawPrompt = document.getElementById('ai-prompt').value.trim();
+        const btn = document.getElementById('ai-submit-btn');
+        const output = document.getElementById('ai-output');
+        const box = document.getElementById('ai-output-box');
+        const placeholder = document.getElementById('ai-placeholder');
+        const cursor = document.getElementById('ai-cursor');
+        const errBox = document.getElementById('ai-error-box');
+        const badge = document.getElementById('ai-model-badge');
+
+        placeholder.classList.add('hidden');
+        errBox.classList.add('hidden');
+        box.classList.remove('hidden');
+        aiText = '';
+        output.innerHTML = '';
+        cursor.classList.remove('hidden');
+        btn.disabled = true;
+
+        try {
+            const res0 = await apiFetch(`/api/dashboard/users/${username}/usage?period=${aiPeriod}`);
+            if (!res0.ok) throw new Error('분석 데이터를 불러오지 못했습니다');
+            const usage = await res0.json();
+            const prompt = rawPrompt || defaultAiPrompt(aiPeriod, usage);
+
+            const res = await fetch('/api/ai/review/stream', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'text/event-stream', },
+                body: JSON.stringify({ sessionId: `s-${Date.now()}`, prompt, usage })
+            });
+            if (!res.ok) throw new Error(`AI 서비스 오류 (${res.status})`);
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                const lines = buf.split('\n');
+                buf = lines.pop();
+                for (const line of lines) {
+                    if (line.startsWith('data:')) {
+                        try {
+                            const evt = JSON.parse(line.slice(5).trim());
+                            if (evt.model) { badge.textContent = evt.model; badge.classList.remove('hidden'); }
+                            if (evt.error) throw new Error(evt.error);
+                            if (evt.token) {
+                                aiText += evt.token;
+                                output.innerHTML = marked.parse(aiText);
+                                box.scrollTop = box.scrollHeight;
+                            }
+                            if (evt.done) { cursor.classList.add('hidden'); btn.disabled = false; }
+                        } catch (parseError) {
+                            if (parseError instanceof Error && parseError.message) {
+                                throw parseError;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            box.classList.add('hidden');
+            errBox.textContent = err.message; errBox.classList.remove('hidden');
+        } finally { cursor.classList.add('hidden'); btn.disabled = false; }
+    }
+
+    function riskLevel(totalMin) {
+        if (totalMin >= 120) return { label: '위험', cls: 'text-red-400', desc: `일 2시간 이상`, banner: `오늘 사용 시간이 ${Math.round(totalMin)}분입니다. 주의하세요.` };
+        if (totalMin >= 60) return { label: '주의', cls: 'text-amber-400', desc: `일 1시간 이상`, banner: null };
+        if (totalMin >= 20) return { label: '관찰', cls: 'text-yellow-500', desc: `일 20분 이상`, banner: null };
+        if (totalMin > 0) return { label: '정상', cls: 'text-slate-400', desc: `양호`, banner: null };
+        return { label: '—', cls: 'text-slate-600', desc: '데이터 없음', banner: null };
+    }
+
+    function periodLabel(p) { return p === 'weekly' ? '주별' : (p === 'monthly' ? '월별' : '일별'); }
+
+    function defaultAiPrompt(period, usage) {
+        const dur = (usage?.topDomains || []).reduce((s, d) => s + (d.totalDuration || 0), 0);
+        return `${periodLabel(period)} 분석: 질의 ${usage?.totalQueries || 0}회, 도메인 ${usage?.uniqueDomains || 0}개, 시간 ${Math.round(dur)}분. 위험 도메인과 개선안 제안해줘.`;
+    }
+
+    function domainRisk(min) {
+        if (min >= 60) return { badge: '<span class="text-[10px] font-medium text-red-400 bg-red-950/50 border border-red-800/40 rounded px-1 py-0.5">위험</span>', barCls: 'bar-danger', };
+        if (min >= 30) return { badge: '<span class="text-[10px] font-medium text-amber-400 bg-amber-950/50 border border-amber-800/40 rounded px-1 py-0.5">주의</span>', barCls: 'bar-warning', };
+        if (min >= 10) return { badge: '<span class="text-[10px] font-medium text-yellow-500 bg-yellow-950/40 border border-yellow-800/30 rounded px-1 py-0.5">관찰</span>', barCls: 'bar-caution', };
+        return { badge: '<span class="text-[10px] text-slate-600">정상</span>', barCls: 'bar-safe', };
+    }
+
+    function logout() { localStorage.removeItem('detox_token'); window.location.replace('/login'); }
+    function copyDohUrl() { if (!dohUrl) return; navigator.clipboard.writeText(dohUrl).then(() => showToast('복사되었습니다')); }
+    function showToast(msg) {
+        const t = document.getElementById('toast'); t.textContent = msg;
+        t.classList.replace('opacity-0', 'opacity-100');
+        setTimeout(() => t.classList.replace('opacity-100', 'opacity-0'), 2000);
+    }
+    function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString('ko-KR'); }
+    function fmtDuration(m) { return !m ? '0분' : (m >= 60 ? `${Math.floor(m / 60)}시간 ${Math.round(m % 60)}분` : `${Math.round(m)}분`); }
+    function fmtTime(us) { return new Date(us / 1000).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }); }
+    function fmtLastSeen(us) {
+        const diffMs = Date.now() - Math.floor(us / 1000);
+        if (diffMs < 0) return fmtTime(us);
+        const diffSec = Math.floor(diffMs / 1000);
+        if (diffSec < 60) return '방금';
+        const diffMin = Math.floor(diffSec / 60);
+        if (diffMin < 60) return `${diffMin}분 전`;
+        const diffHour = Math.floor(diffMin / 60);
+        if (diffHour < 24) return `${diffHour}시간 전`;
+        return fmtTime(us);
+    }
+    function fmtDateLabel(d) { return new Date(d).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }); }
+    function formatLocalDate(date) {
+        return [
+            date.getFullYear(),
+            String(date.getMonth() + 1).padStart(2, '0'),
+            String(date.getDate()).padStart(2, '0')
+        ].join('-');
+    }
+    function getDomainRange() {
+        const pickerValue = document.getElementById('date-picker').value || todayStr;
+        const base = new Date(`${pickerValue}T00:00:00`);
+        const start = new Date(base);
+        if (currentPeriod === 'weekly') { const day = start.getDay(); start.setDate(start.getDate() - (day === 0 ? 6 : day - 1)); }
+        else if (currentPeriod === 'monthly') { start.setDate(1); }
+        const s = formatLocalDate(start);
+        const e = formatLocalDate(base);
+        document.getElementById('domain-date-label').textContent = currentPeriod === 'daily' ? fmtDateLabel(pickerValue) : `${fmtDateLabel(s)} - ${fmtDateLabel(e)}`;
+        return { startDate: s, endDate: e };
+    }
+    function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escJs(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+    function refreshRelativeTimes() {
+        document.querySelectorAll('.last-access-cell').forEach(el => {
+            const raw = el.dataset.lastAccess;
+            el.textContent = raw ? fmtLastSeen(Number(raw)) : '—';
+        });
+    }
+
+    const st = document.createElement('style');
+    st.textContent = `.active-period{background:#334155;color:#e2e8f0}.period-btn:not(.active-period){color:#64748b}.period-btn:not(.active-period):hover{color:#cbd5e1;background:#1e293b}`;
+    document.head.appendChild(st);
+</script>
+</body>
+</html>

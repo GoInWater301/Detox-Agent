@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detox Agent - AI Review</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .prose h2 { font-size: 1.125rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #f1f5f9; }
+        .prose p { margin-bottom: 0.75rem; line-height: 1.625; color: #cbd5e1; }
+        .prose ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.75rem; color: #cbd5e1; }
+        .prose li { margin-bottom: 0.25rem; }
+        .prose strong { color: #f8fafc; font-weight: 600; }
+        .prose blockquote { border-left: 4px solid #334155; padding-left: 1rem; font-style: italic; color: #94a3b8; margin: 1rem 0; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+<main class="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+    <header class="flex items-center justify-between gap-4">
+        <div>
+            <p class="text-xs uppercase tracking-[0.24em] text-slate-600">AI Review</p>
+            <h1 class="text-2xl font-semibold text-slate-100 mt-1">분석과 차단 추천</h1>
+            <p class="text-sm text-slate-500 mt-2">AI가 DNS 사용 데이터를 분석하여 디지털 습관 개선을 위한 맞춤형 조언을 제공합니다.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="/dashboard" class="px-3 py-2 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-900 transition">대시보드</a>
+            <a href="/blocklist" class="px-3 py-2 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-900 transition">차단 목록</a>
+            <button type="button" onclick="logout()" class="px-3 py-2 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-900 transition">로그아웃</button>
+        </div>
+    </header>
+
+    <section class="grid lg:grid-cols-[1.5fr_1fr] gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs text-slate-500">분석 기간</span>
+                <button type="button" data-period="daily" onclick="setPeriod('daily')" class="period-btn px-3 py-1.5 text-xs rounded border border-slate-700 bg-slate-800 text-slate-200">일별</button>
+                <button type="button" data-period="weekly" onclick="setPeriod('weekly')" class="period-btn px-3 py-1.5 text-xs rounded border border-slate-700 bg-slate-900 text-slate-500">주별</button>
+                <button type="button" data-period="monthly" onclick="setPeriod('monthly')" class="period-btn px-3 py-1.5 text-xs rounded border border-slate-700 bg-slate-900 text-slate-500">월별</button>
+                <span id="period-summary" class="text-xs text-slate-600 ml-2">오늘 기준</span>
+            </div>
+
+            <div class="grid sm:grid-cols-3 gap-3">
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+                    <p class="text-xs text-slate-500">총 질의</p>
+                    <p id="usage-total-queries" class="text-xl font-semibold mt-2">—</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+                    <p class="text-xs text-slate-500">고유 도메인</p>
+                    <p id="usage-unique-domains" class="text-xl font-semibold mt-2">—</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+                    <p class="text-xs text-slate-500">추정 사용 시간</p>
+                    <p id="usage-total-duration" class="text-xl font-semibold mt-2">—</p>
+                </div>
+            </div>
+
+            <div id="ai-output-container" class="space-y-4">
+                <div id="ai-output-box" class="bg-slate-950 border border-slate-800 rounded-lg p-5 min-h-[350px] max-h-[500px] overflow-y-auto custom-scrollbar">
+                    <div id="ai-status-badge" class="hidden mb-4 inline-flex items-center px-2 py-1 rounded text-[10px] font-medium bg-blue-900/30 text-blue-400 border border-blue-800/50">
+                        <span class="relative flex h-2 w-2 mr-2">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                        </span>
+                        AI가 분석 중...
+                    </div>
+                    <div id="ai-output" class="prose prose-invert max-w-none text-sm">
+                        <p class="text-slate-500 italic text-center py-10">분석을 시작하려면 질문을 입력하거나 분석 실행 버튼을 누르세요.</p>
+                    </div>
+                </div>
+
+                <div id="ai-error-box" class="hidden bg-red-950/40 border border-red-800/40 text-red-300 text-sm rounded-lg px-4 py-3"></div>
+
+                <div class="relative">
+                    <textarea id="ai-prompt" rows="3"
+                              class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-4 pr-32 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                              placeholder="분석 옵션을 입력하거나 추가 질문을 해보세요..."></textarea>
+                    <div class="absolute right-2 bottom-2 flex gap-2">
+                        <button type="button" id="ai-clear-btn" onclick="clearAiOutput()" class="px-3 py-1.5 rounded text-xs text-slate-400 hover:text-slate-200 transition">초기화</button>
+                        <button type="button" id="ai-submit-btn" onclick="runAiReview()" class="px-4 py-1.5 rounded bg-slate-200 text-slate-950 text-sm font-medium hover:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            분석 실행
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <section class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                <div class="flex items-center justify-between gap-2">
+                    <div>
+                        <h2 class="text-sm font-medium text-slate-200">추천 차단 후보</h2>
+                        <p class="text-xs text-slate-500 mt-1">사용 시간과 질의 수가 높은 도메인을 제안합니다.</p>
+                    </div>
+                    <button type="button" onclick="loadRecommendations()" class="text-xs text-slate-400 hover:text-slate-200">새로고침</button>
+                </div>
+                <div id="recommended-blocks" class="mt-4 space-y-2"></div>
+            </section>
+
+            <section class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                <div class="flex items-center justify-between gap-2">
+                    <div>
+                        <h2 class="text-sm font-medium text-slate-200">현재 차단 목록</h2>
+                    </div>
+                    <button type="button" onclick="loadBlockedDomains()" class="text-xs text-slate-400 hover:text-slate-200">새로고침</button>
+                </div>
+                <div class="mt-4 flex gap-2">
+                    <input id="manual-domain" type="text" placeholder="example.com"
+                           class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-500">
+                    <button type="button" onclick="blockManualDomain()" class="px-3 py-2 rounded bg-slate-800 border border-slate-700 text-sm text-slate-200 hover:bg-slate-700 transition">차단</button>
+                </div>
+                <div id="blocked-domains" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar"></div>
+            </section>
+        </div>
+    </section>
+</main>
+
+<script>
+    const token = localStorage.getItem('detox_token');
+    const username = localStorage.getItem('detox_username') || '';
+    if (!token) window.location.replace('/login');
+
+    let currentPeriod = 'daily';
+    let currentUsage = null;
+    let currentAiText = '';
+    let currentSessionId = `review-${Date.now()}`;
+
+    init();
+
+    async function init() {
+        setPeriod('daily');
+        await Promise.all([loadUsage(), loadBlockedDomains()]);
+        await loadRecommendations();
+    }
+
+    function setPeriod(period) {
+        currentPeriod = period;
+        document.querySelectorAll('.period-btn').forEach(button => {
+            const active = button.dataset.period === period;
+            button.classList.toggle('bg-slate-800', active);
+            button.classList.toggle('text-slate-200', active);
+            button.classList.toggle('bg-slate-900', !active);
+            button.classList.toggle('text-slate-500', !active);
+        });
+        document.getElementById('period-summary').textContent = `${periodLabel(period)} 기준 분석`;
+    }
+
+    async function apiFetch(path, opts = {}) {
+        const res = await fetch(path, {
+            ...opts,
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                ...(opts.headers || {})
+            }
+        });
+        if (res.status === 401) {
+            logout();
+            throw new Error('세션이 만료되었습니다');
+        }
+        return res;
+    }
+
+    async function loadUsage() {
+        const res = await apiFetch(`/api/dashboard/users/${username}/usage?period=${currentPeriod}`);
+        if (!res.ok) throw new Error('분석 데이터를 불러오지 못했습니다');
+        currentUsage = await res.json();
+        renderUsage(currentUsage);
+        return currentUsage;
+    }
+
+    function renderUsage(usage) {
+        const totalMinutes = (usage.topDomains || []).reduce((sum, domain) => sum + (domain.totalDuration || 0), 0);
+        document.getElementById('usage-total-queries').textContent = number(usage.totalQueries);
+        document.getElementById('usage-unique-domains').textContent = number(usage.uniqueDomains);
+        document.getElementById('usage-total-duration').textContent = fmtMinutes(totalMinutes);
+    }
+
+    function clearAiOutput() {
+        currentAiText = '';
+        currentSessionId = `review-${Date.now()}`;
+        document.getElementById('ai-output').innerHTML = '<p class="text-slate-500 italic text-center py-10">분석을 시작하려면 질문을 입력하거나 분석 실행 버튼을 누르세요.</p>';
+        document.getElementById('ai-error-box').classList.add('hidden');
+    }
+
+    async function runAiReview() {
+        const promptInput = document.getElementById('ai-prompt');
+        const statusBadge = document.getElementById('ai-status-badge');
+        const submitBtn = document.getElementById('ai-submit-btn');
+        const errorBox = document.getElementById('ai-error-box');
+        const outputArea = document.getElementById('ai-output');
+        const outputBox = document.getElementById('ai-output-box');
+
+        errorBox.classList.add('hidden');
+        statusBadge.classList.remove('hidden');
+        submitBtn.disabled = true;
+
+        try {
+            const usage = await loadUsage();
+            const prompt = promptInput.value.trim() || defaultPrompt(usage);
+
+            if (!currentAiText) {
+                outputArea.innerHTML = '';
+            } else {
+                currentAiText += '\n\n---\n\n';
+            }
+
+            const res = await fetch('/api/ai/review/stream', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'text/event-stream',
+                },
+                body: JSON.stringify({
+                    sessionId: currentSessionId,
+                    prompt,
+                    usage
+                })
+            });
+
+            if (!res.ok) throw new Error(`AI 응답 오류 (${res.status})`);
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            if (promptInput.value.trim()) {
+                promptInput.value = '';
+            }
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split('\n');
+                buffer = parts.pop() || '';
+
+                for (const line of parts) {
+                    if (line.startsWith('data:')) {
+                        try {
+                            const data = JSON.parse(line.slice(5).trim());
+                            if (data.error) {
+                                throw new Error(data.error);
+                            }
+                            if (data.token) {
+                                currentAiText += data.token;
+                                outputArea.innerHTML = marked.parse(currentAiText);
+                                outputBox.scrollTop = outputBox.scrollHeight;
+                            }
+                        } catch (e) {
+                            if (e instanceof Error && e.message) {
+                                throw e;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            errorBox.textContent = error.message;
+            errorBox.classList.remove('hidden');
+        } finally {
+            statusBadge.classList.add('hidden');
+            submitBtn.disabled = false;
+        }
+    }
+
+    async function loadRecommendations() {
+        const usage = currentUsage || await loadUsage();
+        const blocked = new Set(await fetchBlockedDomains());
+        const candidates = (usage.topDomains || [])
+            .filter(domain => (domain.totalDuration || 0) >= 10 || (domain.requestCount || 0) >= 25)
+            .filter(domain => !blocked.has(domain.domain))
+            .slice(0, 8);
+        renderRecommendations(candidates);
+    }
+
+    function renderRecommendations(candidates) {
+        const container = document.getElementById('recommended-blocks');
+        if (!candidates.length) {
+            container.innerHTML = '<p class="text-sm text-slate-500">추천할 후보가 없습니다.</p>';
+            return;
+        }
+
+        container.innerHTML = candidates.map(domain => `
+            <div class="flex items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-lg px-3 py-3">
+                <div class="min-w-0">
+                    <p class="text-sm text-slate-200 truncate">${escapeHtml(domain.domain)}</p>
+                    <p class="text-xs text-slate-500 mt-1">${number(domain.requestCount)}회 질의 · ${fmtMinutes(domain.totalDuration || 0)}</p>
+                </div>
+                <button onclick="blockDomain('${escapeJs(domain.domain)}')" class="shrink-0 px-3 py-1.5 rounded bg-amber-400 text-slate-950 text-xs font-medium hover:bg-amber-300 transition">
+                    차단
+                </button>
+            </div>
+        `).join('');
+    }
+
+    async function fetchBlockedDomains() {
+        const res = await apiFetch('/api/blocklist');
+        if (!res.ok) throw new Error('차단 목록을 불러오지 못했습니다');
+        return await res.json();
+    }
+
+    async function loadBlockedDomains() {
+        const domains = await fetchBlockedDomains();
+        const container = document.getElementById('blocked-domains');
+        if (!domains.length) {
+            container.innerHTML = '<p class="text-sm text-slate-500">차단된 도메인이 없습니다.</p>';
+            return;
+        }
+        container.innerHTML = domains.map(domain => `
+            <div class="flex items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-lg px-3 py-3 mb-2 last:mb-0">
+                <p class="text-sm text-slate-200 truncate">${escapeHtml(domain)}</p>
+                <button onclick="unblockDomain('${escapeJs(domain)}')" class="shrink-0 px-3 py-1.5 rounded border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 transition">
+                    해제
+                </button>
+            </div>
+        `).join('');
+    }
+
+    async function blockDomain(domain) {
+        const res = await apiFetch('/api/blocklist', {
+            method: 'POST',
+            body: JSON.stringify({ domain })
+        });
+        if (!res.ok) throw new Error('도메인 차단에 실패했습니다');
+        await Promise.all([loadBlockedDomains(), loadRecommendations()]);
+    }
+
+    async function blockManualDomain() {
+        const input = document.getElementById('manual-domain');
+        const domain = input.value.trim();
+        if (!domain) return;
+        await blockDomain(domain);
+        input.value = '';
+    }
+
+    async function unblockDomain(domain) {
+        const res = await apiFetch(`/api/blocklist/${encodeURIComponent(domain)}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok && res.status !== 204) throw new Error('차단 해제에 실패했습니다');
+        await Promise.all([loadBlockedDomains(), loadRecommendations()]);
+    }
+
+    function defaultPrompt(usage) {
+        return `${periodLabel(currentPeriod)} DNS 사용 패턴을 분석하고, `
+            + `차단이 필요한 도메인 후보와 그 이유를 우선순위와 함께 제안해줘. `
+            + `총 질의 수는 ${usage.totalQueries || 0}회, 고유 도메인은 ${usage.uniqueDomains || 0}개야.`;
+    }
+
+    function periodLabel(period) {
+        if (period === 'weekly') return '주별';
+        if (period === 'monthly') return '월별';
+        return '일별';
+    }
+
+    function fmtMinutes(minutes) {
+        if (!minutes) return '0분';
+        if (minutes >= 60) return `${Math.floor(minutes / 60)}시간 ${Math.round(minutes % 60)}분`;
+        return `${Math.round(minutes)}분`;
+    }
+
+    function number(value) {
+        return Number(value || 0).toLocaleString('ko-KR');
+    }
+
+    function logout() {
+        ['detox_token', 'detox_username', 'detox_doh_url'].forEach(key => localStorage.removeItem(key));
+        window.location.replace('/login');
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function escapeJs(value) {
+        return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+</script>
+<style>
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+</style>
+</body>
+</html>

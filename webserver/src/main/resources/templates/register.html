@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detox Agent - 회원가입</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 flex items-center justify-center min-h-screen font-sans">
+
+<div class="w-full max-w-md px-4">
+    <!-- Logo -->
+    <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
+            <svg class="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+        </div>
+        <h1 class="text-2xl font-bold text-white tracking-tight">Detox Agent</h1>
+        <p class="text-slate-400 text-sm mt-1">새 계정을 만들어 DNS 사용량을 추적하세요</p>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-8">
+        <h2 class="text-lg font-semibold text-white mb-6">회원가입</h2>
+
+        <div id="error-msg" class="hidden bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg p-3 mb-5 text-sm"></div>
+
+        <form id="register-form" class="space-y-5">
+            <div>
+                <label for="username" class="block text-sm font-medium text-slate-300 mb-1.5">사용자 이름</label>
+                <input type="text" id="username" name="username" required minlength="3" autocomplete="username"
+                       class="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm
+                              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+                              placeholder-slate-500 transition"
+                       placeholder="3자 이상">
+            </div>
+            <div>
+                <label for="email" class="block text-sm font-medium text-slate-300 mb-1.5">이메일</label>
+                <input type="email" id="email" name="email" required autocomplete="email"
+                       class="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm
+                              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+                              placeholder-slate-500 transition"
+                       placeholder="you@example.com">
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium text-slate-300 mb-1.5">비밀번호</label>
+                <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password"
+                       class="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm
+                              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+                              placeholder-slate-500 transition"
+                       placeholder="8자 이상">
+            </div>
+            <button type="submit" id="submit-btn"
+                    class="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold
+                           py-2.5 rounded-lg transition-colors duration-150 text-sm flex items-center justify-center gap-2">
+                <span id="btn-text">계정 만들기</span>
+                <svg id="btn-spinner" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+            </button>
+        </form>
+
+        <!-- DoH Info (shown after register) -->
+        <div id="doh-info" class="hidden mt-5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
+            <p class="text-emerald-400 text-sm font-medium mb-1">회원가입 완료! 개인 DoH URL이 생성되었습니다.</p>
+            <code id="doh-url" class="block text-xs text-slate-300 bg-slate-800 rounded px-3 py-2 mt-2 break-all"></code>
+        </div>
+
+        <p class="text-center text-slate-500 text-sm mt-6">
+            이미 계정이 있으신가요?
+            <a href="/login" class="text-indigo-400 hover:text-indigo-300 font-medium transition">로그인</a>
+        </p>
+    </div>
+</div>
+
+<script>
+    if (localStorage.getItem('detox_token')) {
+        window.location.replace('/dashboard');
+    }
+
+    const form = document.getElementById('register-form');
+    const errorMsg = document.getElementById('error-msg');
+    const submitBtn = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorMsg.classList.add('hidden');
+        submitBtn.disabled = true;
+        btnText.textContent = '처리 중...';
+        btnSpinner.classList.remove('hidden');
+
+        try {
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    username: document.getElementById('username').value.trim(),
+                    email: document.getElementById('email').value.trim(),
+                    password: document.getElementById('password').value
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.message || `회원가입 실패 (${res.status})`);
+            }
+
+            const data = await res.json();
+            localStorage.setItem('detox_token', data.accessToken);
+            localStorage.setItem('detox_username', data.username);
+            localStorage.setItem('detox_doh_url', data.dohUrl || '');
+
+            // Show DoH URL briefly then redirect
+            document.getElementById('doh-url').textContent = data.dohUrl || '(발급 중)';
+            document.getElementById('doh-info').classList.remove('hidden');
+            setTimeout(() => window.location.replace('/dashboard'), 2000);
+        } catch (err) {
+            errorMsg.textContent = err.message;
+            errorMsg.classList.remove('hidden');
+            submitBtn.disabled = false;
+            btnText.textContent = '계정 만들기';
+            btnSpinner.classList.add('hidden');
+        }
+    });
+</script>
+</body>
+</html>

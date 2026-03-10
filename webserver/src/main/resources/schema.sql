@@ -51,7 +51,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_doh_token ON users(doh_token);
 
+CREATE TABLE IF NOT EXISTS blocked_domains (
+    id BIGSERIAL PRIMARY KEY,
+    user_token VARCHAR(255) NOT NULL,
+    domain VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_domains_unique ON blocked_domains(user_token, domain);
+CREATE INDEX IF NOT EXISTS idx_blocked_domains_user_token ON blocked_domains(user_token);
+
 -- 기본 DoH 엔드포인트 시드 데이터 (없을 때만 삽입)
 INSERT INTO doh_endpoints (name, base_url, region, max_users, active)
-    SELECT 'default', 'https://doh.detox-agent.local', 'KR', 10000, true
+    SELECT 'default', 'https://doh.leeswallow.click', 'KR', 10000, true
     WHERE NOT EXISTS (SELECT 1 FROM doh_endpoints WHERE name = 'default');
+
+-- 과거 로컬 개발용 기본 엔드포인트를 운영 주소로 보정
+UPDATE doh_endpoints
+SET base_url = 'https://doh.leeswallow.click'
+WHERE name = 'default'
+  AND base_url IN ('https://doh.detox-agent.local', 'https://doh.leeswallow.click/~');
