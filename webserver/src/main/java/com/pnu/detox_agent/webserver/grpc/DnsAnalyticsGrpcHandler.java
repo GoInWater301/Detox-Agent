@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.grpc.server.service.GrpcService;
 
 @GrpcService
-public class DnsAnalyticsGrpcHandler extends DnsAnalyticsServiceGrpc.DnsAnalyticsServiceImplBase {
+public class DnsAnalyticsGrpcHandler extends AnalyticsServiceGrpc.AnalyticsServiceImplBase {
 
     private static final Logger log = LoggerFactory.getLogger(DnsAnalyticsGrpcHandler.class);
 
@@ -57,8 +57,10 @@ public class DnsAnalyticsGrpcHandler extends DnsAnalyticsServiceGrpc.DnsAnalytic
             public void onCompleted() {
                 responseObserver.onNext(Ack.newBuilder()
                         .setAcceptedCount(accepted.get())
-                        .setRejectedCount(rejected.get())
                         .build());
+                if (rejected.get() > 0) {
+                    log.info("DNS stream completed with rejected events: {}", rejected.get());
+                }
                 responseObserver.onCompleted();
             }
         };

@@ -34,6 +34,7 @@ public class UsageTrackingService {
         long timestampUs = event.getTimestampUs() > 0
                 ? event.getTimestampUs()
                 : Instant.now().toEpochMilli() * 1000L;
+        long responseTimeMs = Integer.toUnsignedLong(event.getLatencyUs()) / 1000L;
 
         return redisTemplate.<String, String>opsForHash()
                 .entries(usageKey)
@@ -47,7 +48,7 @@ public class UsageTrackingService {
                     if (!current.isEmpty() && timestampUs > lastAccess) {
                         totalDuration += (timestampUs - lastAccess);
                     }
-                    long responseSum = parseLong(current.get("responseTimeSum"), 0L) + Math.max(0L, event.getResponseTimeMs());
+                    long responseSum = parseLong(current.get("responseTimeSum"), 0L) + responseTimeMs;
                     long avgResponse = count == 0 ? 0L : responseSum / count;
 
                     Map<String, String> updates = Map.of(
@@ -67,7 +68,7 @@ public class UsageTrackingService {
                                     event.getUserId(),
                                     event.getQueriedDomain(),
                                     timestampUs,
-                                    event.getResponseTimeMs()))
+                                    responseTimeMs))
                             .thenReturn(new DomainUsageRecord(
                                     event.getUserId(),
                                     event.getQueriedDomain(),

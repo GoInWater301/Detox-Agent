@@ -10,7 +10,7 @@ load_dotenv()
 # Persona: "Compassionate Digital Health Coach"
 usage_analyst_agent = Agent(
     'openai:gpt-4o',  # or 'google-g2:gemini-1.5-pro'
-    result_type=UsageAnalysis,
+    output_type=UsageAnalysis,
     system_prompt=(
         "You are an expert Digital Health & Productivity coach. Your task is to analyze a user's domain usage data "
         "(domain name, duration in seconds, frequency). "
@@ -37,4 +37,4 @@ async def run_analysis(usage_list: List[DomainUsageItem]) -> UsageAnalysis:
         f"Analyze this domain usage data: {usage_list}",
         deps=usage_list
     )
-    return result.data
+    return getattr(result, "output", getattr(result, "data"))

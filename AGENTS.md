@@ -128,3 +128,42 @@ graph TD
 ---
 
 이 에이전트 설정은 Detox-Agent 백엔드 생태계의 모든 구성 요소가 일관된 기준 아래 개발되고 안정적으로 운영되도록 보장합니다.
+
+---
+
+## ✅ 전체 프로젝트 검증 및 수정 사항 (2026-03-09)
+
+### 검증 실행 요약
+
+| 서비스 | 실행 명령 | 결과 | 비고 |
+|---|---|---|---|
+| Agent (Python) | `python3 -m compileall -q src main.py` | 성공 | 현재 검증 환경 Python `3.12.3` (프로젝트 요구사항: `>=3.13`) |
+| WebServer (Java) | `./gradlew test --no-daemon` | 실패 후 수정, 최종 성공 | gRPC 생성 코드와 서비스 코드 간 스키마 불일치 수정 |
+| DoH (C++) | `cmake -S . -B build-local` | 실패 | `boost_redis` CMake 패키지 미설치로 configure 중단 |
+
+### 적용된 수정 사항
+
+1. gRPC 서비스 베이스 클래스명 불일치 수정  
+   - 파일: `webserver/src/main/java/com/pnu/detox_agent/webserver/grpc/DnsAnalyticsGrpcHandler.java`  
+   - 변경: `DnsAnalyticsServiceGrpc` → `AnalyticsServiceGrpc`  
+   - 변경 이유: `dns_analytics.proto` 기준 생성 클래스명과 코드 불일치 해결
+
+2. Ack 응답 스키마 불일치 수정  
+   - 파일: `webserver/src/main/java/com/pnu/detox_agent/webserver/grpc/DnsAnalyticsGrpcHandler.java`  
+   - 변경: 존재하지 않는 `setRejectedCount(...)` 제거, rejected 이벤트는 로그로 기록  
+   - 변경 이유: 현재 proto `Ack` 메시지는 `accepted_count`만 정의
+
+3. DNS 이벤트 지연시간 필드 매핑 수정  
+   - 파일: `webserver/src/main/java/com/pnu/detox_agent/webserver/service/UsageTrackingService.java`  
+   - 변경: `event.getResponseTimeMs()` 참조 제거, `event.getLatencyUs()`를 ms로 변환해 사용  
+   - 변경 이유: proto 필드(`latency_us`)와 Java 서비스 구현 간 불일치 해결
+
+### 잔여 이슈 및 후속 조치
+
+1. DoH 로컬 빌드 환경 의존성 보완 필요  
+   - `boost_redis` 포함 Boost 컴포넌트가 CMake에서 탐지되지 않음  
+   - 조치: vcpkg toolchain 기반 빌드(`-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`)를 표준 검증 절차로 고정
+
+2. Agent 런타임 버전 정합성 점검 필요  
+   - `pyproject.toml` 요구사항은 Python `>=3.13`, 검증 환경은 `3.12.3`  
+   - 조치: CI 및 로컬 개발 컨테이너/가상환경에서 Python 3.13 명시

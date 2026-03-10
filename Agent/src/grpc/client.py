@@ -1,11 +1,14 @@
 import grpc
+import os
 import src.grpc.usage_pb2 as usage_pb2
 import src.grpc.usage_pb2_grpc as usage_pb2_grpc
 from src.models import DomainUsageItem
 from typing import List
 
 class UsageClient:
-    def __init__(self, host='localhost', port=50051):
+    def __init__(self, host=None, port=None):
+        host = host or os.getenv("USAGE_GRPC_HOST", "localhost")
+        port = int(port or os.getenv("USAGE_GRPC_PORT", "50051"))
         self.channel = grpc.insecure_channel(f'{host}:{port}')
         self.stub = usage_pb2_grpc.UsageServiceStub(self.channel)
 
