@@ -182,6 +182,38 @@ cmake --build build
 - DoH 로컬 빌드는 환경 의존성이 큽니다.
 - Python 3.13 요구사항과 로컬 인터프리터 버전은 별도 확인이 필요합니다.
 
+## 주간 진행 상황
+
+### Week 7
+- 전체 DetoxAgent 흐름을 기준으로 서비스 역할과 데이터 흐름을 정리했습니다.
+- WebServer, Agent, DoH, Frontend 저장소 구조를 확정하고 초기 연동 방향을 맞췄습니다.
+- 인증, DNS 수집, 대시보드, AI 리뷰를 하나의 사용자 흐름으로 묶는 기준을 세웠습니다.
+
+### Week 8
+- 사용자 인증과 DoH 엔드포인트 발급 흐름을 구체화했습니다.
+- WebServer 중심의 REST / gRPC 인터페이스를 정리하고 기본 API 구성을 확장했습니다.
+- Frontend와 연결 가능한 대시보드 응답 구조를 맞추기 시작했습니다.
+
+### Week 9
+- DNS 이벤트 수집 이후 Redis / PostgreSQL에 적재하는 집계 흐름을 보강했습니다.
+- 사용자별 사용량 조회, 기간별 통계, 도메인 목록 처리 로직을 다듬었습니다.
+- 차단 목록 관리와 연동될 수 있도록 데이터 구조를 정리했습니다.
+
+### Week 10
+- Frontend 대시보드 UI와 인증 화면을 실제 API 흐름 기준으로 연결했습니다.
+- AI 리뷰 요청을 SSE와 gRPC 기반 흐름으로 연결해 실시간 출력 구조를 만들었습니다.
+- Docker Compose 기준으로 로컬 통합 실행이 가능하도록 서비스 포트와 연결을 정리했습니다.
+
+### Week 11
+- WebServer에 blocklist 관리, 템플릿 페이지, 도메인 집계 정책을 추가했습니다.
+- Agent 쪽 AI 리뷰 서비스와 proto/generated client 구성을 정리했습니다.
+- DoH는 UDP timeout / truncation 시 TCP fallback 되도록 보완했습니다.
+
+### Week 12
+- 루트 README와 각 서비스 문서를 현재 구현 상태 기준으로 다시 정리했습니다.
+- PR 템플릿과 리뷰 메모를 추가해 변경 단위를 설명하기 쉽게 맞췄습니다.
+- 미구현 영역과 후속 과제를 분리해 문서상 과장된 표현을 제거했습니다.
+
 ## 문서
 
 - [docs/OVERVIEW.md](/home/min/Workspace/Portfolio/Detox-Agent/docs/OVERVIEW.md)
