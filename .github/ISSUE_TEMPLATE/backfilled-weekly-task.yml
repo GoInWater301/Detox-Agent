@@ -1,0 +1,57 @@
+name: Backfilled Weekly Task
+description: Week 7-10 retrospective issue template for reconstructed collaboration logs
+title: "[Backfilled][Week X] "
+labels:
+  - backfilled
+body:
+  - type: input
+    id: week
+    attributes:
+      label: Week
+      description: Use one of Week 7, Week 8, Week 9, Week 10
+      placeholder: Week 7
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: Owner Contact
+      description: Repository owner contact for tracking
+      value: lmh2157@outlook.kr
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the task in one short paragraph
+      placeholder: Define the implementation goal and the service area touched by this task.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Keep this to the actual outcomes reflected in the repository
+      value: |
+        - 
+        - 
+        - 
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      value: |
+        - [ ] Local validation completed
+        - [ ] README/docs remain aligned with implementation
+        - [ ] Follow-up items documented if incomplete
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Record assumptions, limitations, or follow-up work
+      placeholder: Optional
