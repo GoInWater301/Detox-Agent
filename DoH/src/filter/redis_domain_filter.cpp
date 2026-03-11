@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <future>
 #include <mutex>
 #include <string_view>
 
@@ -133,6 +134,57 @@ bool parse_snapshot_nodes(const std::vector<redis::resp3::node>& nodes,
     return true;
 }
 
+class SyncRedisClient {
+public:
+    explicit SyncRedisClient(const redis::config& cfg)
+        : cfg_(cfg)
+        , ioc_(1)
+        , conn_(std::make_shared<redis::connection>(ioc_)) {}
+
+    ~SyncRedisClient() {
+        stop();
+    }
+
+    void run() {
+        thread_ = std::jthread([this] {
+            conn_->async_run(cfg_, net::detached);
+            ioc_.run();
+        });
+    }
+
+    void stop() {
+        if (!conn_) {
+            return;
+        }
+        net::dispatch(ioc_, [conn = conn_] { conn->cancel(); });
+        ioc_.stop();
+    }
+
+    bool exec(redis::request& req,
+              redis::generic_response& resp,
+              std::chrono::milliseconds timeout) {
+        auto future = net::dispatch(
+            conn_->get_executor(),
+            net::deferred([this, &req, &resp] {
+                return conn_->async_exec(req, resp, net::deferred);
+            }))(net::use_future);
+
+        if (future.wait_for(timeout) != std::future_status::ready) {
+            stop();
+            return false;
+        }
+
+        future.get();
+        return true;
+    }
+
+private:
+    redis::config cfg_;
+    net::io_context ioc_;
+    std::shared_ptr<redis::connection> conn_;
+    std::jthread thread_;
+};
+
 } // namespace
 
 RedisDomainFilter::RedisDomainFilter(net::io_context& ioc,
@@ -142,11 +194,11 @@ RedisDomainFilter::RedisDomainFilter(net::io_context& ioc,
                                       uint32_t         timeout_ms,
                                       uint32_t         refresh_ms,
                                       bool             fail_open)
-    : refresh_timer_(ioc)
-    , timeout_(timeout_ms)
+    : timeout_(timeout_ms)
     , refresh_interval_(refresh_ms)
     , fail_open_(fail_open)
 {
+    (void) ioc;
     redis_cfg_.addr.host = host;
     redis_cfg_.addr.port = std::to_string(port);
     if (!password.empty()) redis_cfg_.password = std::move(password);
@@ -155,7 +207,13 @@ RedisDomainFilter::RedisDomainFilter(net::io_context& ioc,
                  host, port, timeout_.count(), refresh_interval_.count(),
                  fail_open_ ? "fail-open" : "fail-closed");
 
-    schedule_refresh(std::chrono::milliseconds{0});
+    refresh_thread_ = std::jthread([this](std::stop_token stop_token) {
+        refresh_loop(stop_token);
+    });
+}
+
+RedisDomainFilter::~RedisDomainFilter() {
+    refresh_cv_.notify_all();
 }
 
 void RedisDomainFilter::async_check(std::string                  user_id,
@@ -190,72 +248,51 @@ void RedisDomainFilter::async_check(std::string                  user_id,
     net::dispatch(ex, [cb = std::move(cb), blocked]() mutable { cb(blocked); });
 }
 
-void RedisDomainFilter::schedule_refresh(std::chrono::milliseconds delay) {
-    refresh_timer_.expires_after(delay);
-    refresh_timer_.async_wait([this](boost::system::error_code ec) {
-        if (ec == net::error::operation_aborted) {
-            return;
-        }
-        if (ec) {
-            spdlog::warn("Filter refresh timer error: {}", ec.message());
-            schedule_refresh(refresh_interval_);
-            return;
-        }
+void RedisDomainFilter::refresh_loop(std::stop_token stop_token) {
+    while (!stop_token.stop_requested()) {
         refresh_snapshot();
-    });
+
+        std::unique_lock lock(refresh_mu_);
+        refresh_cv_.wait_for(lock, stop_token, refresh_interval_, [] { return false; });
+    }
 }
 
 void RedisDomainFilter::refresh_snapshot() {
-    auto conn = std::make_shared<redis::connection>(refresh_timer_.get_executor());
-    auto req = std::make_shared<redis::request>();
-    auto resp = std::make_shared<redis::generic_response>();
+    redis::request req;
+    redis::generic_response resp;
+    req.push("EVAL", kSnapshotScript, "0");
 
-    req->push("EVAL", kSnapshotScript, "0");
+    SyncRedisClient client(redis_cfg_);
+    client.run();
+    const bool completed = client.exec(req, resp, timeout_);
+    client.stop();
 
-    conn->async_run(redis_cfg_, net::consign(net::detached, conn));
+    if (!completed) {
+        spdlog::warn("Filter snapshot refresh timed out after {} ms", timeout_.count());
+        return;
+    }
 
-    conn->async_exec(
-        *req,
-        *resp,
-        net::cancel_after(
-            timeout_,
-            [this, conn, req, resp, timeout = timeout_](boost::system::error_code ec, std::size_t) {
-                conn->cancel();
-                if (ec) {
-                    if (ec == net::error::operation_aborted) {
-                        spdlog::warn("Filter snapshot refresh timed out after {} ms",
-                                     timeout.count());
-                    } else {
-                        spdlog::warn("Filter snapshot refresh error: {}", ec.message());
-                    }
-                    schedule_refresh(refresh_interval_);
-                    return;
-                }
+    Snapshot next;
+    if (!resp.has_value() || !parse_snapshot_nodes(resp.value(), next)) {
+        spdlog::warn("Filter snapshot refresh returned malformed data");
+        return;
+    }
 
-                Snapshot next;
-                if (!resp->has_value() || !parse_snapshot_nodes(resp->value(), next)) {
-                    spdlog::warn("Filter snapshot refresh returned malformed data");
-                    schedule_refresh(refresh_interval_);
-                    return;
-                }
+    std::size_t user_count = 0;
+    std::size_t domain_count = next.global.size();
+    for (const auto& [_, domains] : next.per_user) {
+        ++user_count;
+        domain_count += domains.size();
+    }
 
-                std::size_t user_count = 0;
-                std::size_t domain_count = next.global.size();
-                for (const auto& [_, domains] : next.per_user) {
-                    ++user_count;
-                    domain_count += domains.size();
-                }
+    {
+        std::unique_lock lock(snapshot_mu_);
+        snapshot_ = std::move(next);
+        ready_ = true;
+    }
 
-                {
-                    std::unique_lock lock(snapshot_mu_);
-                    snapshot_ = std::move(next);
-                    ready_ = true;
-                }
-
-                spdlog::info("Filter snapshot refreshed: users={} domains={}",
-                             user_count, domain_count);
-                schedule_refresh(refresh_interval_);
-            }));
+    spdlog::info("Filter snapshot refreshed: users={} domains={}",
+                 user_count, domain_count);
 }
 
 } // namespace doh::filter

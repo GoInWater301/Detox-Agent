@@ -4,8 +4,11 @@
 
 #include <boost/asio.hpp>
 #include <boost/redis.hpp>
+#include <condition_variable>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -45,6 +48,7 @@ public:
                       uint32_t                 timeout_ms,
                       uint32_t                 refresh_ms,
                       bool                     fail_open);
+    ~RedisDomainFilter() override;
 
     void async_check(std::string                  user_id,
                       std::string                  domain,
@@ -52,15 +56,17 @@ public:
                       FilterCallback               cb) override;
 
 private:
-    void schedule_refresh(std::chrono::milliseconds delay);
     void refresh_snapshot();
+    void refresh_loop(std::stop_token stop_token);
 
-    boost::asio::steady_timer refresh_timer_;
     boost::redis::config redis_cfg_;
     std::chrono::milliseconds timeout_;
     std::chrono::milliseconds refresh_interval_;
     bool fail_open_ = true;
     bool ready_ = false;
+    std::mutex refresh_mu_;
+    std::condition_variable_any refresh_cv_;
+    std::jthread refresh_thread_;
     mutable std::shared_mutex snapshot_mu_;
     Snapshot snapshot_;
 };

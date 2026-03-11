@@ -307,7 +307,9 @@ void HttpsSession::on_write(beast::error_code ec, std::size_t, bool close) {
 void HttpsSession::do_close() {
     stream_.async_shutdown(
         [self = shared_from_this()](beast::error_code ec) {
-            if (ec && ec != net::error::eof)
+            if (ec &&
+                ec != net::error::eof &&
+                ec != ssl::error::stream_truncated)
                 spdlog::debug("Shutdown [{}]: {}", self->client_ip_, ec.message());
         });
 }
